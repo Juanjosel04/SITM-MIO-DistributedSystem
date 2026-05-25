@@ -1,0 +1,6 @@
+task slice2java(type: Exec) {
+
+    commandLine 'slice2java',
+            '--output-dir', 'generated',
+            'slice/EventoService.ice'
+}
