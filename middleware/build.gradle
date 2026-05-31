@@ -14,6 +14,7 @@ sourceSets {
             ]
         }
     }
+    
 }
 
 apply from: 'slice2java.gradle'
