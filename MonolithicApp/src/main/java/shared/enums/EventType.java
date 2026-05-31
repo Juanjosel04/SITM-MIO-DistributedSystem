@@ -1,0 +1,16 @@
+package shared.enums;
+
+public enum EventType {
+    FLAT_TIRE,
+    MECHANICAL_FAILURE,
+    TRAFFIC_JAM,
+    COLLISION,
+    DOOR_FAILURE,
+    SECURITY_INCIDENT,
+    GPS_ANOMALY,
+    INVALID_DATAGRAM,
+    LOW_SPEED,
+    HIGH_SPEED,
+    PROCESSING_ERROR,
+    GENERAL_OPERATIONAL_EVENT
+}
