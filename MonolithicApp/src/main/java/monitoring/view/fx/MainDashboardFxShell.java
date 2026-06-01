@@ -1,5 +1,7 @@
 package monitoring.view.fx;
 
+import analytics.controller.AnalyticsController;
+import analytics.view.fx.AnalyticsFxPanel;
 import events.model.OperationalEvent;
 import events.service.EventService;
 import events.view.fx.BusConsoleFxView;
@@ -36,6 +38,7 @@ public class MainDashboardFxShell extends BorderPane {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final MonitoringController controller;
     private final EventService eventService;
+    private final AnalyticsController analyticsController;
     private final Label statusLabel = new Label("Idle");
     private final MapFxView mapView = new MapFxView();
     private final Map<String, Label> metricValues = new LinkedHashMap<String, Label>();
@@ -45,9 +48,11 @@ public class MainDashboardFxShell extends BorderPane {
     private final ListView<String> logList = new ListView<String>();
     private final List<String> recentLogs = new ArrayList<String>();
 
-    public MainDashboardFxShell(MonitoringController controller, EventService eventService) {
+    public MainDashboardFxShell(MonitoringController controller, EventService eventService,
+                                AnalyticsController analyticsController) {
         this.controller = controller;
         this.eventService = eventService;
+        this.analyticsController = analyticsController;
         buildLayout();
         controller.addStateListener(new MonitoringStateListener() {
             @Override
@@ -89,12 +94,16 @@ public class MainDashboardFxShell extends BorderPane {
         consoleButton.setStyle("-fx-background-color: white; -fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-background-radius: 4;");
         consoleButton.setOnAction(event -> openBusConsole());
 
+        Button analyticsButton = new Button("Open Analytics");
+        analyticsButton.setStyle("-fx-background-color: #bfdbfe; -fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-background-radius: 4;");
+        analyticsButton.setOnAction(event -> openAnalytics());
+
         statusLabel.setTextFill(Color.WHITE);
         statusLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
         statusLabel.setPadding(new Insets(8, 16, 8, 16));
         statusLabel.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 4;");
 
-        header.getChildren().addAll(title, spacer, consoleButton, statusLabel);
+        header.getChildren().addAll(title, spacer, analyticsButton, consoleButton, statusLabel);
         return header;
     }
 
@@ -198,6 +207,12 @@ public class MainDashboardFxShell extends BorderPane {
         BusConsoleFxView console = new BusConsoleFxView(eventService);
         console.showView();
         addLog("JavaFX bus console opened");
+    }
+
+    private void openAnalytics() {
+        AnalyticsFxPanel analyticsPanel = new AnalyticsFxPanel(analyticsController);
+        analyticsPanel.showView();
+        addLog("Analytics view opened");
     }
 
     private void refresh() {

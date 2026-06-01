@@ -92,6 +92,9 @@ public class MonitoringService implements SystemEventListener {
     }
 
     private void addFinishedAlert(Object payload) {
+        if (payload instanceof PipelineSummary) {
+            state.setLastPipelineSummary((PipelineSummary) payload);
+        }
         if (payload instanceof PipelineSummary && ((PipelineSummary) payload).getErrors() > 0) {
             addAlert("Stream finished", "Finished with processing errors.", NotificationLevel.WARNING);
         } else {

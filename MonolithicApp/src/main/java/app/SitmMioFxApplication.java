@@ -1,5 +1,7 @@
 package app;
 
+import analytics.controller.AnalyticsController;
+import analytics.service.AnalyticsService;
 import core.observer.subject.SystemEventPublisher;
 import core.utils.AppLogger;
 import events.service.EventService;
@@ -27,7 +29,10 @@ public class SitmMioFxApplication extends Application {
 
         eventPublisher.addListener(monitoringService);
 
-        MainDashboardFxShell shell = new MainDashboardFxShell(monitoringController, eventService);
+        AnalyticsService analyticsService = new AnalyticsService(monitoringController);
+        AnalyticsController analyticsController = new AnalyticsController(analyticsService, monitoringController);
+
+        MainDashboardFxShell shell = new MainDashboardFxShell(monitoringController, eventService, analyticsController);
         Scene scene = new Scene(shell, 1120, 720);
 
         primaryStage.setTitle("SITM-MIO Monitoring Center");

@@ -3,6 +3,8 @@ package monitoring.controller;
 import monitoring.model.AlertPanelModel;
 import monitoring.model.BusMarker;
 import monitoring.model.MonitoringMetric;
+import core.model.PipelineSummary;
+import core.model.BusPosition;
 import events.model.OperationalEvent;
 import monitoring.service.MonitoringService;
 import monitoring.service.MonitoringStateListener;
@@ -28,6 +30,10 @@ public class MonitoringController {
         return monitoringService.getState().getCurrentBuses();
     }
 
+    public List<BusPosition> getPositionHistory() {
+        return monitoringService.getState().getPositionHistory();
+    }
+
     public List<AlertPanelModel> getAlerts() {
         return monitoringService.getState().getAlerts();
     }
@@ -38,5 +44,25 @@ public class MonitoringController {
 
     public List<OperationalEvent> getRecentEvents() {
         return monitoringService.getState().getRecentEvents();
+    }
+
+    public int getRoutesLoaded() {
+        return monitoringService.getState().getRoutesLoaded();
+    }
+
+    public int getPositionsUpdated() {
+        return monitoringService.getState().getPositionsUpdated();
+    }
+
+    public int getDatagramsProcessed() {
+        return monitoringService.getState().getDatagramsProcessed();
+    }
+
+    public int getDatagramsInvalid() {
+        return monitoringService.getState().getDatagramsInvalid();
+    }
+
+    public PipelineSummary getLastPipelineSummary() {
+        return monitoringService.getState().getLastPipelineSummary();
     }
 }
