@@ -1,25 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>SITM-MIO Monitoring</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map { height: 100vh; width: 100%; margin: 0; padding: 0; }
-        body { margin: 0; padding: 0; }
+        html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
+        body { overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        var map = L.map('map').setView([3.42, -76.52], 12); // Cali
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
+        var CALI_CENTER = [3.4516, -76.5320];
+        var CALI_ZOOM = 12;
+        var map = null;
         var markers = {};
 
+        function initializeMap() {
+            if (map || typeof L === 'undefined') {
+                return;
+            }
+
+            map = L.map('map', {
+                zoomControl: true,
+                preferCanvas: true
+            }).setView(CALI_CENTER, CALI_ZOOM);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            refreshMapSize();
+        }
+
+        function isSitmMapReady() {
+            return !!map;
+        }
+
+        function refreshMapSize() {
+            if (map) {
+                setTimeout(function () {
+                    map.invalidateSize(false);
+                }, 100);
+            }
+        }
+
+        function centerOnCali() {
+            if (map) {
+                map.setView(CALI_CENTER, CALI_ZOOM, { animate: false });
+                refreshMapSize();
+            }
+        }
+
         function updateBus(busId, lat, lng, lineId, time) {
+            if (!map || typeof L === 'undefined') {
+                return false;
+            }
+
             if (markers[busId]) {
                 markers[busId].setLatLng([lat, lng]);
                 markers[busId].setPopupContent("<b>Bus:</b> " + busId + "<br><b>Ruta:</b> " + lineId + "<br><b>Hora:</b> " + time);
@@ -28,7 +67,11 @@
                 marker.bindPopup("<b>Bus:</b> " + busId + "<br><b>Ruta:</b> " + lineId + "<br><b>Hora:</b> " + time);
                 markers[busId] = marker;
             }
+            return true;
         }
+
+        window.addEventListener('resize', refreshMapSize);
+        initializeMap();
     </script>
 </body>
 </html>
