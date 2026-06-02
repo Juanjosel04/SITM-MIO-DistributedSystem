@@ -2,6 +2,7 @@ package monitoring.service;
 
 import core.model.BusPosition;
 import core.model.PipelineSummary;
+import core.model.Route;
 import core.observer.events.SystemEvent;
 import core.observer.events.SystemEventType;
 import core.observer.notifications.NotificationLevel;
@@ -11,6 +12,7 @@ import events.model.OperationalEvent;
 import monitoring.model.AlertPanelModel;
 import monitoring.model.MonitoringMetric;
 import monitoring.model.RealtimeMapState;
+import shared.utils.RouteDisplayService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -18,10 +20,23 @@ import java.util.List;
 
 public class MonitoringService implements SystemEventListener {
     private final RealtimeMapState state = new RealtimeMapState();
+    private final RouteDisplayService routeDisplayService = new RouteDisplayService();
     private final List<MonitoringStateListener> stateListeners = new ArrayList<MonitoringStateListener>();
 
     public RealtimeMapState getState() {
         return state;
+    }
+
+    public String getRouteDisplayName(int routeId) {
+        return routeDisplayService.getDisplayName(routeId);
+    }
+
+    public String getRouteFilterLabel(int routeId) {
+        return routeDisplayService.getFilterLabel(routeId);
+    }
+
+    public String getRouteFullDisplayName(int routeId) {
+        return routeDisplayService.getFullDisplayName(routeId);
     }
 
     public synchronized void addStateListener(MonitoringStateListener listener) {
@@ -50,6 +65,8 @@ public class MonitoringService implements SystemEventListener {
 
         if (SystemEventType.STREAM_STARTED == event.getEventType()) {
             state.setStreamStatus("Streaming");
+        } else if (SystemEventType.ROUTE_CATALOG_LOADED == event.getEventType()) {
+            updateRouteCatalog(event.getPayload());
         } else if (SystemEventType.ROUTES_LOADED == event.getEventType()) {
             updateRoutesLoaded(event.getPayload());
         } else if (SystemEventType.BUS_POSITION_UPDATED == event.getEventType()) {
@@ -83,6 +100,19 @@ public class MonitoringService implements SystemEventListener {
         if (payload instanceof Integer) {
             state.setRoutesLoaded(((Integer) payload).intValue());
         }
+    }
+
+    private void updateRouteCatalog(Object payload) {
+        if (!(payload instanceof List)) {
+            return;
+        }
+        List<Route> routes = new ArrayList<Route>();
+        for (Object value : (List<?>) payload) {
+            if (value instanceof Route) {
+                routes.add((Route) value);
+            }
+        }
+        routeDisplayService.replaceRoutes(routes);
     }
 
     private void updateBusPosition(Object payload) {

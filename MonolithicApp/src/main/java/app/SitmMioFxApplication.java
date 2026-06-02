@@ -6,13 +6,13 @@ import core.observer.subject.SystemEventPublisher;
 import core.utils.AppLogger;
 import events.service.EventService;
 import javafx.application.Application;
-import javafx.scene.Scene;
 import javafx.stage.Stage;
 import monitoring.controller.MonitoringController;
 import monitoring.service.MonitoringService;
-import monitoring.view.fx.MainDashboardFxShell;
 import persistence.connection.DatabaseConfig;
 import persistence.connection.DatabaseConnectionManager;
+import security.auth.AuthService;
+import security.navigation.NavigationController;
 
 public class SitmMioFxApplication extends Application {
     @Override
@@ -32,14 +32,10 @@ public class SitmMioFxApplication extends Application {
         AnalyticsService analyticsService = new AnalyticsService(monitoringController);
         AnalyticsController analyticsController = new AnalyticsController(analyticsService, monitoringController);
 
-        MainDashboardFxShell shell = new MainDashboardFxShell(monitoringController, eventService, analyticsController);
-        Scene scene = new Scene(shell, 1120, 720);
-
-        primaryStage.setTitle("SITM-MIO Monitoring Center");
-        primaryStage.setScene(scene);
-        primaryStage.setMinWidth(960);
-        primaryStage.setMinHeight(640);
-        primaryStage.show();
+        AuthService authService = new AuthService();
+        NavigationController navigationController = new NavigationController(primaryStage, authService,
+                monitoringController, eventService, analyticsController);
+        navigationController.showLogin();
 
         startPipeline(eventPublisher, eventService);
         AppLogger.info("JavaFX application initialized.");

@@ -39,8 +39,9 @@ public class MainDashboardFxShell extends BorderPane {
     private final MonitoringController controller;
     private final EventService eventService;
     private final AnalyticsController analyticsController;
+    private final Runnable logoutAction;
     private final Label statusLabel = new Label("Idle");
-    private final MapFxView mapView = new MapFxView();
+    private final MapFxView mapView;
     private final Map<String, Label> metricValues = new LinkedHashMap<String, Label>();
     private final ListView<String> busList = new ListView<String>();
     private final ListView<String> alertList = new ListView<String>();
@@ -50,9 +51,16 @@ public class MainDashboardFxShell extends BorderPane {
 
     public MainDashboardFxShell(MonitoringController controller, EventService eventService,
                                 AnalyticsController analyticsController) {
+        this(controller, eventService, analyticsController, null);
+    }
+
+    public MainDashboardFxShell(MonitoringController controller, EventService eventService,
+                                AnalyticsController analyticsController, Runnable logoutAction) {
         this.controller = controller;
         this.eventService = eventService;
         this.analyticsController = analyticsController;
+        this.logoutAction = logoutAction;
+        this.mapView = new MapFxView(controller);
         buildLayout();
         controller.addStateListener(new MonitoringStateListener() {
             @Override
@@ -104,6 +112,12 @@ public class MainDashboardFxShell extends BorderPane {
         statusLabel.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 4;");
 
         header.getChildren().addAll(title, spacer, analyticsButton, consoleButton, statusLabel);
+        if (logoutAction != null) {
+            Button logoutButton = new Button("Logout");
+            logoutButton.setStyle("-fx-background-color: white; -fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-background-radius: 4;");
+            logoutButton.setOnAction(event -> logoutAction.run());
+            header.getChildren().add(logoutButton);
+        }
         return header;
     }
 
@@ -204,7 +218,7 @@ public class MainDashboardFxShell extends BorderPane {
     }
 
     private void openBusConsole() {
-        BusConsoleFxView console = new BusConsoleFxView(eventService);
+        BusConsoleFxView console = new BusConsoleFxView(eventService, controller);
         console.showView();
         addLog("JavaFX bus console opened");
     }
@@ -243,7 +257,7 @@ public class MainDashboardFxShell extends BorderPane {
         for (BusMarker bus : controller.getCurrentBuses()) {
             String speed = bus.getSpeed() == null ? "N/A" : String.format("%.1f", bus.getSpeed());
             String time = bus.getLastUpdate() == null ? "" : TIME_FORMATTER.format(bus.getLastUpdate());
-            rows.add(bus.getBusCode() + " | route " + bus.getRouteId() + " | " +
+            rows.add(bus.getBusCode() + " | route " + controller.getRouteDisplayName(bus.getRouteId()) + " | " +
                     String.format("%.5f", bus.getLatitude()) + ", " +
                     String.format("%.5f", bus.getLongitude()) + " | speed " + speed + " | " + time);
         }
@@ -266,7 +280,8 @@ public class MainDashboardFxShell extends BorderPane {
             String bus = event.getBusCode() == null ? "N/A" : event.getBusCode();
             String time = event.getTimestamp() == null ? "" : TIME_FORMATTER.format(event.getTimestamp());
             rows.add(event.getEventType().name() + " | " + event.getPriority().name() + " | " +
-                    event.getSourceType().name() + " | bus " + bus + " | route " + event.getRouteId() + " | " + time);
+                    event.getSourceType().name() + " | bus " + bus + " | route " +
+                    controller.getRouteFilterLabel(event.getRouteId()) + " | " + time);
         }
         eventList.getItems().setAll(rows);
     }

@@ -116,6 +116,50 @@ CREATE TABLE IF NOT EXISTS sessions (
     active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- Phase 5 security users. national_id is stored as VARCHAR(10) because it represents a cedula.
+CREATE TABLE IF NOT EXISTS system_users (
+    id BIGSERIAL PRIMARY KEY,
+    national_id VARCHAR(10) NOT NULL UNIQUE,
+    full_name VARCHAR(120) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(30) NOT NULL CHECK (role IN ('ADMIN', 'CONTROLLER', 'DRIVER')),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Operational zones are logical groups of routes, not geographic polygons.
+CREATE TABLE IF NOT EXISTS operational_zones (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(80) NOT NULL UNIQUE,
+    description VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS zone_route_assignments (
+    id BIGSERIAL PRIMARY KEY,
+    zone_id BIGINT NOT NULL REFERENCES operational_zones(id),
+    route_id INTEGER NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (zone_id, route_id)
+);
+
+COMMENT ON COLUMN zone_route_assignments.route_id IS
+'LINEID numerico del CSV de rutas. No almacena shortName y no usa FK a routes(id) para evitar conflictos con seeds legacy.';
+
+CREATE TABLE IF NOT EXISTS controller_zone_assignments (
+    id BIGSERIAL PRIMARY KEY,
+    controller_user_id BIGINT NOT NULL REFERENCES system_users(id),
+    zone_id BIGINT NOT NULL REFERENCES operational_zones(id),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (controller_user_id, zone_id)
+);
+
+COMMENT ON TABLE controller_zone_assignments IS
+'La validacion de que controller_user_id tenga rol CONTROLLER se hara en la capa de servicio futura.';
+
 CREATE TABLE IF NOT EXISTS public_transport_estimates (
     id BIGSERIAL PRIMARY KEY,
     route_id INTEGER REFERENCES routes(id),

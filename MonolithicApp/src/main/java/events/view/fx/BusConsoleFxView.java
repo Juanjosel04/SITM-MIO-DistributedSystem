@@ -8,6 +8,7 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
@@ -21,6 +22,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+import monitoring.controller.MonitoringController;
 import shared.enums.EventPriority;
 import shared.enums.EventType;
 
@@ -31,6 +33,7 @@ public class BusConsoleFxView {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final EventService eventService;
+    private final MonitoringController monitoringController;
     private final EventPriorityAssigner priorityAssigner = new EventPriorityAssigner();
     private final EventOption[] options = new EventOption[]{
             new EventOption("Flat tire", EventType.FLAT_TIRE),
@@ -50,34 +53,49 @@ public class BusConsoleFxView {
     private final Label priorityLabel = new Label();
     private final Label confirmationLabel = new Label("Ready");
     private final Label lastEventLabel = new Label("No event sent yet");
+    private final Label routePreviewLabel = new Label();
     private final TextField busCodeField = new TextField("513327");
     private final TextField routeIdField = new TextField("2241");
     private final TextArea descriptionArea = new TextArea();
     private final Button sendButton = new Button("Send");
+    private BorderPane root;
 
     public BusConsoleFxView(EventService eventService) {
+        this(eventService, null);
+    }
+
+    public BusConsoleFxView(EventService eventService, MonitoringController monitoringController) {
         this.eventService = eventService;
+        this.monitoringController = monitoringController;
+        routeIdField.textProperty().addListener((observable, oldValue, newValue) -> updateRoutePreview());
         configureWindow();
         updateEventPreview();
+        updateRoutePreview();
         selectCurrentEvent();
     }
 
     public void showView() {
+        if (stage.getScene() == null) {
+            Scene scene = new Scene(root, 500, 560);
+            stage.setScene(scene);
+        }
         stage.show();
         stage.toFront();
     }
 
+    public Node getView() {
+        return root;
+    }
+
     private void configureWindow() {
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
         root.setPadding(new Insets(18));
         root.setStyle("-fx-background-color: #e2e8f0;");
         root.setTop(createHeader());
         root.setCenter(createConsolePanel());
         root.setBottom(createNavigationPanel());
 
-        Scene scene = new Scene(root, 500, 560);
         stage.setTitle("Bus Console Simulator");
-        stage.setScene(scene);
         stage.setMinWidth(460);
         stage.setMinHeight(520);
     }
@@ -116,6 +134,10 @@ public class BusConsoleFxView {
         grid.add(busCodeField, 1, 0);
         grid.add(label("Route ID"), 0, 1);
         grid.add(routeIdField, 1, 1);
+        routePreviewLabel.setTextFill(Color.web("#64748b"));
+        routePreviewLabel.setFont(Font.font("System", 12));
+        routePreviewLabel.setWrapText(true);
+        grid.add(routePreviewLabel, 1, 2);
         GridPane.setHgrow(busCodeField, Priority.ALWAYS);
         GridPane.setHgrow(routeIdField, Priority.ALWAYS);
         return grid;
@@ -281,13 +303,44 @@ public class BusConsoleFxView {
             confirmationLabel.setTextFill(Color.web("#b91c1c"));
         }
         lastEventLabel.setText(option.getDisplayName() + " | bus " + busCodeField.getText().trim() +
-                " | route " + routeIdField.getText().trim() + " | " +
+                " | Route: " + routeFilterLabel(routeIdField.getText().trim()) + " | " +
                 TIME_FORMATTER.format(LocalDateTime.now()));
     }
 
     private void showError(String message) {
         confirmationLabel.setText(message);
         confirmationLabel.setTextFill(Color.web("#b91c1c"));
+    }
+
+    private void updateRoutePreview() {
+        String routeText = routeIdField.getText() == null ? "" : routeIdField.getText().trim();
+        if (routeText.isEmpty()) {
+            routePreviewLabel.setText("Recognized route: Route ID pending");
+            return;
+        }
+        try {
+            int routeId = Integer.parseInt(routeText);
+            routePreviewLabel.setText("Recognized route: " + routeFullDisplayName(routeId));
+        } catch (NumberFormatException exception) {
+            routePreviewLabel.setText("Recognized route: Route ID must be numeric");
+        }
+    }
+
+    private String routeFilterLabel(String routeText) {
+        try {
+            int routeId = Integer.parseInt(routeText);
+            return monitoringController == null
+                    ? "Route " + routeId
+                    : monitoringController.getRouteFilterLabel(routeId);
+        } catch (NumberFormatException exception) {
+            return routeText;
+        }
+    }
+
+    private String routeFullDisplayName(int routeId) {
+        return monitoringController == null
+                ? "Route " + routeId
+                : monitoringController.getRouteFullDisplayName(routeId);
     }
 
     private static class EventOption {

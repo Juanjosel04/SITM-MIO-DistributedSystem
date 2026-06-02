@@ -7,6 +7,8 @@ import shared.exceptions.CsvParsingException;
 import shared.exceptions.RepositoryException;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class RouteLoader {
     private final CsvReader csvReader;
@@ -20,20 +22,24 @@ public class RouteLoader {
     }
 
     public int loadRoutes(String path, boolean persistenceEnabled) throws IOException {
+        return loadRouteCatalog(path, persistenceEnabled).size();
+    }
+
+    public List<Route> loadRouteCatalog(String path, boolean persistenceEnabled) throws IOException {
         CsvContent content = csvReader.read(path, true);
-        int loaded = 0;
+        List<Route> routes = new ArrayList<Route>();
         for (String line : content.getLines()) {
             try {
                 Route route = routeParser.parse(line, content.getHeader());
                 if (persistenceEnabled) {
                     routeRepository.save(route);
                 }
-                loaded++;
+                routes.add(route);
             } catch (CsvParsingException ignored) {
             } catch (RepositoryException exception) {
                 throw new IOException("Could not persist routes", exception);
             }
         }
-        return loaded;
+        return routes;
     }
 }

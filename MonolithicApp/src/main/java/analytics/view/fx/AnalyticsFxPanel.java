@@ -33,6 +33,7 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import monitoring.service.MonitoringStateListener;
+import security.model.AccessScope;
 
 import java.time.LocalDateTime;
 import java.time.Month;
@@ -47,6 +48,7 @@ public class AnalyticsFxPanel extends BorderPane {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final AnalyticsController analyticsController;
+    private final AccessScope accessScope;
     private final Stage stage = new Stage();
     private final Map<String, Label> summaryValues = new LinkedHashMap<String, Label>();
     private final Label lastRefreshLabel = new Label("Not refreshed yet");
@@ -65,7 +67,12 @@ public class AnalyticsFxPanel extends BorderPane {
     private boolean updatingFilters;
 
     public AnalyticsFxPanel(AnalyticsController analyticsController) {
+        this(analyticsController, null);
+    }
+
+    public AnalyticsFxPanel(AnalyticsController analyticsController, AccessScope accessScope) {
         this.analyticsController = analyticsController;
+        this.accessScope = accessScope;
         buildLayout();
         configureStage();
         configureRefresh();
@@ -86,7 +93,7 @@ public class AnalyticsFxPanel extends BorderPane {
 
     private void configureStage() {
         Scene scene = new Scene(this, 1120, 740);
-        stage.setTitle("Analytics & Statistics");
+        stage.setTitle(restrictedMode() ? "SITM-MIO - Analitica del Controlador" : "Analytics & Statistics");
         stage.setScene(scene);
         stage.setMinWidth(960);
         stage.setMinHeight(640);
@@ -133,9 +140,17 @@ public class AnalyticsFxPanel extends BorderPane {
         header.setPadding(new Insets(18, 24, 18, 24));
         header.setStyle("-fx-background-color: #0f172a;");
 
-        Label title = new Label("Analytics & Statistics");
+        VBox titleBox = new VBox(3);
+        Label title = new Label(restrictedMode() ? "Analitica del Controlador" : "Analytics & Statistics");
         title.setTextFill(Color.WHITE);
         title.setFont(Font.font("System", FontWeight.BOLD, 24));
+        titleBox.getChildren().add(title);
+        if (restrictedMode()) {
+            Label subtitle = new Label("Informacion limitada a las rutas asignadas");
+            subtitle.setTextFill(Color.web("#cbd5e1"));
+            subtitle.setFont(Font.font("System", 12));
+            titleBox.getChildren().add(subtitle);
+        }
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -145,7 +160,7 @@ public class AnalyticsFxPanel extends BorderPane {
 
         refreshButton.setStyle("-fx-background-color: white; -fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-background-radius: 4;");
 
-        header.getChildren().addAll(title, spacer, lastRefreshLabel, refreshButton);
+        header.getChildren().addAll(titleBox, spacer, lastRefreshLabel, refreshButton);
         return header;
     }
 
@@ -239,7 +254,7 @@ public class AnalyticsFxPanel extends BorderPane {
 
     private void configureRouteSpeedTable() {
         routeSpeedTable.getColumns().clear();
-        routeSpeedTable.getColumns().add(stringColumn("Route", value -> "Route " + value.getRouteId()));
+        routeSpeedTable.getColumns().add(stringColumn("Route", value -> analyticsController.getRouteDisplayName(value.getRouteId())));
         routeSpeedTable.getColumns().add(stringColumn("Year", RouteSpeedAnalyticsRow::getYearLabel));
         routeSpeedTable.getColumns().add(stringColumn("Month", RouteSpeedAnalyticsRow::getMonthLabel));
         routeSpeedTable.getColumns().add(stringColumn("Monthly Avg Speed", value -> speedOrDash(value.getMonthlyAverageSpeed())));
@@ -249,7 +264,7 @@ public class AnalyticsFxPanel extends BorderPane {
 
     private void configureEventRouteTable() {
         eventRouteTable.getColumns().clear();
-        eventRouteTable.getColumns().add(stringColumn("Route", value -> "Route " + value.getRouteId()));
+        eventRouteTable.getColumns().add(stringColumn("Route", value -> analyticsController.getRouteDisplayName(value.getRouteId())));
         eventRouteTable.getColumns().add(stringColumn("Total Events", value -> String.valueOf(value.getTotalEvents())));
         eventRouteTable.getColumns().add(stringColumn("High", value -> String.valueOf(value.getHighPriorityEvents())));
         eventRouteTable.getColumns().add(stringColumn("Critical", value -> String.valueOf(value.getCriticalEvents())));
@@ -266,7 +281,7 @@ public class AnalyticsFxPanel extends BorderPane {
 
     private void configureActiveBusesTable() {
         activeBusesTable.getColumns().clear();
-        activeBusesTable.getColumns().add(stringColumn("Route", value -> "Route " + value.getRouteId()));
+        activeBusesTable.getColumns().add(stringColumn("Route", value -> analyticsController.getRouteDisplayName(value.getRouteId())));
         activeBusesTable.getColumns().add(stringColumn("Active Buses", value -> String.valueOf(value.getActiveBuses())));
         activeBusesTable.getColumns().add(stringColumn("Bus Codes", value -> truncate(value.getBusCodes(), 72)));
         activeBusesTable.getColumns().add(stringColumn("Last Position", value -> time(value.getLastPositionAt())));
@@ -310,14 +325,14 @@ public class AnalyticsFxPanel extends BorderPane {
         Task<AnalyticsViewData> task = new Task<AnalyticsViewData>() {
             @Override
             protected AnalyticsViewData call() {
-                SystemAnalyticsSnapshot snapshot = analyticsController.refreshSnapshot();
-                List<Integer> routes = analyticsController.getAvailableRoutes();
-                List<Integer> years = analyticsController.getAvailableYears();
+                SystemAnalyticsSnapshot snapshot = analyticsController.refreshSnapshot(accessScope);
+                List<Integer> routes = analyticsController.getAvailableRoutes(accessScope);
+                List<Integer> years = analyticsController.getAvailableYears(accessScope);
                 List<Integer> months = filter.getYear() == null
                         ? new ArrayList<Integer>()
-                        : analyticsController.getAvailableMonthsForYear(filter.getYear().intValue());
-                List<RouteSpeedAnalyticsRow> rows = analyticsController.getFilteredRouteSpeedAnalytics(filter);
-                AnalyticsSelectionSummary summary = analyticsController.getSelectionSummary(filter);
+                        : analyticsController.getAvailableMonthsForYear(filter.getYear().intValue(), accessScope);
+                List<RouteSpeedAnalyticsRow> rows = analyticsController.getFilteredRouteSpeedAnalytics(filter, accessScope);
+                AnalyticsSelectionSummary summary = analyticsController.getSelectionSummary(filter, accessScope);
                 return new AnalyticsViewData(snapshot, routes, years, months, rows, summary, filter);
             }
         };
@@ -361,20 +376,28 @@ public class AnalyticsFxPanel extends BorderPane {
         eventRouteTable.getItems().setAll(data.getSnapshot().getEventRouteStatistics());
         alertPriorityTable.getItems().setAll(data.getSnapshot().getAlertPriorityStatistics());
         activeBusesTable.getItems().setAll(data.getSnapshot().getActiveBusesByRouteStatistics());
+        alertPriorityTable.setPlaceholder(new Label(restrictedMode()
+                ? "Alertas operativas no disponibles para este alcance."
+                : "No alert data available"));
         lastRefreshLabel.setText("Updated " + time(data.getSnapshot().getRefreshedAt()));
     }
 
     private void updateFilters(AnalyticsViewData data) {
         updatingFilters = true;
-        setOptions(routeComboBox, "All routes", data.getRoutes(), data.getFilter().getRouteId(), "Route ");
+        setOptions(routeComboBox, restrictedMode() ? "Todas mis rutas" : "All routes",
+                data.getRoutes(), data.getFilter().getRouteId(), "Route ");
         setOptions(yearComboBox, "All years", data.getYears(), data.getFilter().getYear(), "");
         monthComboBox.setDisable(data.getFilter().getYear() == null);
         setOptions(monthComboBox, "All months", data.getMonths(), data.getFilter().getMonth(), "");
         if (monthComboBox.isDisabled()) {
             monthComboBox.getSelectionModel().selectFirst();
-            filterMessageLabel.setText("Select a year to enable monthly analysis");
+            filterMessageLabel.setText(restrictedMode()
+                    ? "Selecciona un ano para analizar tus rutas por mes"
+                    : "Select a year to enable monthly analysis");
         } else {
-            filterMessageLabel.setText("Month filter is scoped to the selected year");
+            filterMessageLabel.setText(restrictedMode()
+                    ? "El filtro mensual aplica a tus rutas asignadas"
+                    : "Month filter is scoped to the selected year");
         }
         updatingFilters = false;
     }
@@ -384,7 +407,9 @@ public class AnalyticsFxPanel extends BorderPane {
         comboBox.getItems().clear();
         comboBox.getItems().add(new FilterOption(allLabel, null));
         for (Integer value : values) {
-            String label = prefix.length() == 0 && comboBox == monthComboBox
+            String label = comboBox == routeComboBox
+                    ? analyticsController.getRouteFilterLabel(value.intValue())
+                    : prefix.length() == 0 && comboBox == monthComboBox
                     ? monthName(value.intValue())
                     : prefix + value;
             comboBox.getItems().add(new FilterOption(label, value));
@@ -446,6 +471,10 @@ public class AnalyticsFxPanel extends BorderPane {
             return value == null ? "" : value;
         }
         return value.substring(0, maxLength - 3) + "...";
+    }
+
+    private boolean restrictedMode() {
+        return accessScope != null && !accessScope.canViewAllRoutes();
     }
 
     private interface ValueFormatter<T> {

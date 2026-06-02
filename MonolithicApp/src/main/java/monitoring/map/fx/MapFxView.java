@@ -17,6 +17,7 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.util.Duration;
+import monitoring.controller.MonitoringController;
 import monitoring.model.BusMarker;
 
 import java.net.URL;
@@ -35,6 +36,7 @@ public class MapFxView extends BorderPane {
     private static final double MIN_CALI_LONGITUDE = -77.2;
     private static final double MAX_CALI_LONGITUDE = -75.8;
 
+    private final MonitoringController monitoringController;
     private final Map<String, BusMarker> pendingMarkers = new LinkedHashMap<String, BusMarker>();
     private final Map<String, BusMarker> latestMarkers = new LinkedHashMap<String, BusMarker>();
     private final PauseTransition resizeRefresh = new PauseTransition(Duration.millis(150));
@@ -45,6 +47,11 @@ public class MapFxView extends BorderPane {
     private boolean fallbackActive;
 
     public MapFxView() {
+        this(null);
+    }
+
+    public MapFxView(MonitoringController monitoringController) {
+        this.monitoringController = monitoringController;
         setMinWidth(440);
         setStyle("-fx-background-color: white; -fx-border-color: #cbd5e1; -fx-border-radius: 4; -fx-background-radius: 4;");
         configureResizeRefresh();
@@ -169,7 +176,7 @@ public class MapFxView extends BorderPane {
                     escapeJavaScript(marker.getBusCode()),
                     marker.getLatitude(),
                     marker.getLongitude(),
-                    escapeJavaScript(String.valueOf(marker.getRouteId())),
+                    escapeJavaScript(routeFilterLabel(marker.getRouteId())),
                     escapeJavaScript(time));
             Object updated = webEngine.executeScript(script);
             if (!Boolean.TRUE.equals(updated)) {
@@ -258,7 +265,7 @@ public class MapFxView extends BorderPane {
             if (count >= 10) {
                 break;
             }
-            rows.add(marker.getBusCode() + " | route " + marker.getRouteId() + " | " +
+            rows.add(marker.getBusCode() + " | route " + routeFilterLabel(marker.getRouteId()) + " | " +
                     String.format(Locale.US, "%.5f, %.5f", marker.getLatitude(), marker.getLongitude()));
             count++;
         }
@@ -270,6 +277,12 @@ public class MapFxView extends BorderPane {
             return "";
         }
         return value.replace("\\", "\\\\").replace("'", "\\'");
+    }
+
+    private String routeFilterLabel(int routeId) {
+        return monitoringController == null
+                ? "Route " + routeId
+                : monitoringController.getRouteFilterLabel(routeId);
     }
 
     private void scheduleMapSizeRefresh() {

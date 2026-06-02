@@ -4,6 +4,7 @@ import core.ingestion.CsvReader;
 import core.ingestion.DatagramLoader;
 import core.ingestion.RouteLoader;
 import core.model.PipelineSummary;
+import core.model.Route;
 import core.observer.events.SystemEvent;
 import core.observer.events.SystemEventType;
 import core.observer.subject.SystemEventPublisher;
@@ -31,6 +32,7 @@ import shared.constants.DatasetPaths;
 import shared.constants.ProcessingConstants;
 
 import java.io.IOException;
+import java.util.List;
 
 public class ApplicationInitializer {
     private final SystemEventPublisher eventPublisher;
@@ -71,9 +73,11 @@ public class ApplicationInitializer {
                 : configuredEventService;
 
         try {
-            int routesLoaded = routeLoader.loadRoutes(DatasetPaths.ROUTES_FILE, persistenceEnabled);
+            List<Route> routes = routeLoader.loadRouteCatalog(DatasetPaths.ROUTES_FILE, persistenceEnabled);
+            int routesLoaded = routes.size();
             summary.setRoutesLoaded(routesLoaded);
             AppLogger.info("Routes loaded: " + routesLoaded);
+            publish(SystemEventType.ROUTE_CATALOG_LOADED, "Route catalog loaded", routes);
             publish(SystemEventType.ROUTES_LOADED, "Routes loaded", Integer.valueOf(routesLoaded));
         } catch (IOException exception) {
             summary.incrementErrors();

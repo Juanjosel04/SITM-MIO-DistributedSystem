@@ -16,6 +16,7 @@ import events.model.OperationalEvent;
 import monitoring.controller.MonitoringController;
 import monitoring.model.AlertPanelModel;
 import monitoring.model.BusMarker;
+import security.model.AccessScope;
 import shared.enums.EventPriority;
 
 import java.time.LocalDateTime;
@@ -38,10 +39,14 @@ public class AnalyticsService {
     }
 
     public SystemAnalyticsSnapshot refreshSnapshot() {
-        List<BusMarker> buses = monitoringController.getCurrentBuses();
-        List<BusPosition> history = monitoringController.getPositionHistory();
-        List<OperationalEvent> events = monitoringController.getRecentEvents();
-        List<AlertPanelModel> alerts = monitoringController.getAlerts();
+        return refreshSnapshot(null);
+    }
+
+    public SystemAnalyticsSnapshot refreshSnapshot(AccessScope scope) {
+        List<BusMarker> buses = filteredBuses(scope);
+        List<BusPosition> history = validHistoricalPositions(scope);
+        List<OperationalEvent> events = filteredEvents(scope);
+        List<AlertPanelModel> alerts = filteredAlerts(scope);
 
         List<RouteSpeedStatistic> routeSpeedStatistics = calculateRouteSpeedStatistics(history);
         List<EventRouteStatistic> eventRouteStatistics = calculateEventRouteStatistics(events);
@@ -55,9 +60,9 @@ public class AnalyticsService {
         String routeWithMostActiveBuses = routeWithMostActiveBuses(activeBusesByRouteStatistics);
 
         SystemAnalyticsSnapshot snapshot = new SystemAnalyticsSnapshot(
-                monitoringController.getRoutesLoaded(),
+                totalRoutes(scope),
                 buses.size(),
-                monitoringController.getPositionsUpdated(),
+                history.size(),
                 events.size(),
                 alerts.size(),
                 globalAverageSpeed,
@@ -75,6 +80,13 @@ public class AnalyticsService {
     }
 
     public List<Integer> getAvailableRoutes() {
+        return getAvailableRoutes(null);
+    }
+
+    public List<Integer> getAvailableRoutes(AccessScope scope) {
+        if (isRestrictedScope(scope)) {
+            return allowedRoutes(scope);
+        }
         List<Integer> routes = new ArrayList<Integer>();
         for (BusPosition position : validHistoricalPositions()) {
             Integer route = Integer.valueOf(position.getRouteId());
@@ -87,8 +99,12 @@ public class AnalyticsService {
     }
 
     public List<Integer> getAvailableYears() {
+        return getAvailableYears(null);
+    }
+
+    public List<Integer> getAvailableYears(AccessScope scope) {
         List<Integer> years = new ArrayList<Integer>();
-        for (BusPosition position : validHistoricalPositions()) {
+        for (BusPosition position : validHistoricalPositions(scope)) {
             if (position.getTimestamp() == null) {
                 continue;
             }
@@ -102,8 +118,12 @@ public class AnalyticsService {
     }
 
     public List<Integer> getAvailableMonthsForYear(int year) {
+        return getAvailableMonthsForYear(year, null);
+    }
+
+    public List<Integer> getAvailableMonthsForYear(int year, AccessScope scope) {
         List<Integer> months = new ArrayList<Integer>();
-        for (BusPosition position : validHistoricalPositions()) {
+        for (BusPosition position : validHistoricalPositions(scope)) {
             if (position.getTimestamp() == null || position.getTimestamp().getYear() != year) {
                 continue;
             }
@@ -117,22 +137,27 @@ public class AnalyticsService {
     }
 
     public List<RouteSpeedAnalyticsRow> getFilteredRouteSpeedAnalytics(AnalyticsFilter filter) {
-        List<Integer> routeIds = selectedRoutes(filter);
+        return getFilteredRouteSpeedAnalytics(filter, null);
+    }
+
+    public List<RouteSpeedAnalyticsRow> getFilteredRouteSpeedAnalytics(AnalyticsFilter filter, AccessScope scope) {
+        AnalyticsFilter safeFilter = filter == null ? new AnalyticsFilter(null, null, null) : filter;
+        List<Integer> routeIds = selectedRoutes(safeFilter, scope);
         List<RouteSpeedAnalyticsRow> rows = new ArrayList<RouteSpeedAnalyticsRow>();
         for (Integer routeId : routeIds) {
-            if (filter.getYear() == null) {
-                int count = countPositions(routeId, null, null);
+            if (safeFilter.getYear() == null) {
+                int count = countPositions(routeId, null, null, scope);
                 rows.add(new RouteSpeedAnalyticsRow(routeId.intValue(), "All years", "All months",
                         null, null, count));
-            } else if (filter.getMonth() == null) {
-                AverageResult yearAverage = averageFor(routeId, filter.getYear(), null);
-                rows.add(new RouteSpeedAnalyticsRow(routeId.intValue(), String.valueOf(filter.getYear()),
+            } else if (safeFilter.getMonth() == null) {
+                AverageResult yearAverage = averageFor(routeId, safeFilter.getYear(), null, scope);
+                rows.add(new RouteSpeedAnalyticsRow(routeId.intValue(), String.valueOf(safeFilter.getYear()),
                         "All months", null, yearAverage.getAverageOrNull(), yearAverage.getSamples()));
             } else {
-                AverageResult monthAverage = averageFor(routeId, filter.getYear(), filter.getMonth());
-                AverageResult yearAverage = averageFor(routeId, filter.getYear(), null);
-                rows.add(new RouteSpeedAnalyticsRow(routeId.intValue(), String.valueOf(filter.getYear()),
-                        monthName(filter.getMonth().intValue()), monthAverage.getAverageOrNull(),
+                AverageResult monthAverage = averageFor(routeId, safeFilter.getYear(), safeFilter.getMonth(), scope);
+                AverageResult yearAverage = averageFor(routeId, safeFilter.getYear(), null, scope);
+                rows.add(new RouteSpeedAnalyticsRow(routeId.intValue(), String.valueOf(safeFilter.getYear()),
+                        monthName(safeFilter.getMonth().intValue()), monthAverage.getAverageOrNull(),
                         yearAverage.getAverageOrNull(), monthAverage.getSamples()));
             }
         }
@@ -141,19 +166,27 @@ public class AnalyticsService {
     }
 
     public AnalyticsSelectionSummary getSelectionSummary(AnalyticsFilter filter) {
-        AverageResult monthlyAverage = filter.getYear() == null || filter.getMonth() == null
+        return getSelectionSummary(filter, null);
+    }
+
+    public AnalyticsSelectionSummary getSelectionSummary(AnalyticsFilter filter, AccessScope scope) {
+        AnalyticsFilter safeFilter = filter == null ? new AnalyticsFilter(null, null, null) : filter;
+        if (safeFilter.getRouteId() != null && !canUseRoute(scope, safeFilter.getRouteId())) {
+            return new AnalyticsSelectionSummary(null, null, 0);
+        }
+        AverageResult monthlyAverage = safeFilter.getYear() == null || safeFilter.getMonth() == null
                 ? AverageResult.empty()
-                : averageFor(filter.getRouteId(), filter.getYear(), filter.getMonth());
-        AverageResult yearlyAverage = filter.getYear() == null
+                : averageFor(safeFilter.getRouteId(), safeFilter.getYear(), safeFilter.getMonth(), scope);
+        AverageResult yearlyAverage = safeFilter.getYear() == null
                 ? AverageResult.empty()
-                : averageFor(filter.getRouteId(), filter.getYear(), null);
+                : averageFor(safeFilter.getRouteId(), safeFilter.getYear(), null, scope);
         int processedDatagrams;
-        if (filter.getYear() != null && filter.getMonth() != null) {
+        if (safeFilter.getYear() != null && safeFilter.getMonth() != null) {
             processedDatagrams = monthlyAverage.getSamples();
-        } else if (filter.getYear() != null) {
+        } else if (safeFilter.getYear() != null) {
             processedDatagrams = yearlyAverage.getSamples();
         } else {
-            processedDatagrams = countPositions(filter.getRouteId(), null, null);
+            processedDatagrams = countPositions(safeFilter.getRouteId(), null, null, scope);
         }
         return new AnalyticsSelectionSummary(monthlyAverage.getAverageOrNull(),
                 yearlyAverage.getAverageOrNull(), processedDatagrams);
@@ -279,9 +312,14 @@ public class AnalyticsService {
     }
 
     private List<BusPosition> validHistoricalPositions() {
+        return validHistoricalPositions(null);
+    }
+
+    private List<BusPosition> validHistoricalPositions(AccessScope scope) {
         List<BusPosition> validPositions = new ArrayList<BusPosition>();
         for (BusPosition position : monitoringController.getPositionHistory()) {
-            if (position != null && position.getTimestamp() != null && isValidSpeed(position.getSpeed())) {
+            if (position != null && position.getTimestamp() != null && isValidSpeed(position.getSpeed()) &&
+                    canUseRoute(scope, Integer.valueOf(position.getRouteId()))) {
                 validPositions.add(position);
             }
         }
@@ -289,13 +327,22 @@ public class AnalyticsService {
     }
 
     private List<Integer> selectedRoutes(AnalyticsFilter filter) {
+        return selectedRoutes(filter, null);
+    }
+
+    private List<Integer> selectedRoutes(AnalyticsFilter filter, AccessScope scope) {
         if (filter.getRouteId() != null) {
             List<Integer> singleRoute = new ArrayList<Integer>();
-            singleRoute.add(filter.getRouteId());
+            if (canUseRoute(scope, filter.getRouteId())) {
+                singleRoute.add(filter.getRouteId());
+            }
             return singleRoute;
         }
+        if (isRestrictedScope(scope)) {
+            return allowedRoutes(scope);
+        }
         List<Integer> routes = new ArrayList<Integer>();
-        for (BusPosition position : validHistoricalPositions()) {
+        for (BusPosition position : validHistoricalPositions(scope)) {
             if (!matchesDate(position, filter.getYear(), filter.getMonth())) {
                 continue;
             }
@@ -309,9 +356,13 @@ public class AnalyticsService {
     }
 
     private AverageResult averageFor(Integer routeId, Integer year, Integer month) {
+        return averageFor(routeId, year, month, null);
+    }
+
+    private AverageResult averageFor(Integer routeId, Integer year, Integer month, AccessScope scope) {
         double total = 0.0;
         int samples = 0;
-        for (BusPosition position : validHistoricalPositions()) {
+        for (BusPosition position : validHistoricalPositions(scope)) {
             if (routeId != null && position.getRouteId() != routeId.intValue()) {
                 continue;
             }
@@ -325,8 +376,12 @@ public class AnalyticsService {
     }
 
     private int countPositions(Integer routeId, Integer year, Integer month) {
+        return countPositions(routeId, year, month, null);
+    }
+
+    private int countPositions(Integer routeId, Integer year, Integer month, AccessScope scope) {
         int count = 0;
-        for (BusPosition position : validHistoricalPositions()) {
+        for (BusPosition position : validHistoricalPositions(scope)) {
             if (routeId != null && position.getRouteId() != routeId.intValue()) {
                 continue;
             }
@@ -342,6 +397,54 @@ public class AnalyticsService {
             return false;
         }
         return month == null || position.getTimestamp().getMonthValue() == month.intValue();
+    }
+
+    private List<BusMarker> filteredBuses(AccessScope scope) {
+        if (scope == null || scope.canViewAllRoutes()) {
+            return monitoringController.getCurrentBuses();
+        }
+        return monitoringController.getCurrentBuses(scope);
+    }
+
+    private List<OperationalEvent> filteredEvents(AccessScope scope) {
+        if (scope == null || scope.canViewAllRoutes()) {
+            return monitoringController.getRecentEvents();
+        }
+        return monitoringController.getRecentEvents(scope);
+    }
+
+    private List<AlertPanelModel> filteredAlerts(AccessScope scope) {
+        if (scope == null || scope.canViewAllRoutes()) {
+            return monitoringController.getAlerts();
+        }
+        return Collections.emptyList();
+    }
+
+    private int totalRoutes(AccessScope scope) {
+        return isRestrictedScope(scope) ? scope.getAllowedRouteIds().size() : monitoringController.getRoutesLoaded();
+    }
+
+    private boolean canUseRoute(AccessScope scope, Integer routeId) {
+        if (routeId == null) {
+            return false;
+        }
+        if (scope == null || scope.canViewAllRoutes()) {
+            return true;
+        }
+        return scope.canViewRoute(routeId);
+    }
+
+    private boolean isRestrictedScope(AccessScope scope) {
+        return scope != null && !scope.canViewAllRoutes();
+    }
+
+    private List<Integer> allowedRoutes(AccessScope scope) {
+        List<Integer> routeIds = new ArrayList<Integer>();
+        if (scope != null) {
+            routeIds.addAll(scope.getAllowedRouteIds());
+        }
+        Collections.sort(routeIds);
+        return routeIds;
     }
 
     private String monthName(int month) {
@@ -363,7 +466,8 @@ public class AnalyticsService {
         if (statistics.isEmpty()) {
             return "No data";
         }
-        return "Route " + statistics.get(0).getRouteId() + " (" + statistics.get(0).getTotalEvents() + ")";
+        return monitoringController.getRouteDisplayName(statistics.get(0).getRouteId()) +
+                " (" + statistics.get(0).getTotalEvents() + ")";
     }
 
     private String routeWithHighestAverageSpeed(List<RouteSpeedStatistic> statistics) {
@@ -376,14 +480,15 @@ public class AnalyticsService {
                 selected = statistic;
             }
         }
-        return "Route " + selected.getRouteId();
+        return monitoringController.getRouteDisplayName(selected.getRouteId());
     }
 
     private String routeWithMostActiveBuses(List<ActiveBusesByRouteStatistic> statistics) {
         if (statistics.isEmpty()) {
             return "No data";
         }
-        return "Route " + statistics.get(0).getRouteId() + " (" + statistics.get(0).getActiveBuses() + ")";
+        return monitoringController.getRouteDisplayName(statistics.get(0).getRouteId()) +
+                " (" + statistics.get(0).getActiveBuses() + ")";
     }
 
     private void sortByRoute(List<RouteSpeedStatistic> statistics) {
