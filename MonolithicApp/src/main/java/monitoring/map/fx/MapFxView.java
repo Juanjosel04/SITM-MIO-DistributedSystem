@@ -39,7 +39,7 @@ public class MapFxView extends BorderPane {
     private final MonitoringController monitoringController;
     private final Map<String, BusMarker> pendingMarkers = new LinkedHashMap<String, BusMarker>();
     private final Map<String, BusMarker> latestMarkers = new LinkedHashMap<String, BusMarker>();
-    private final PauseTransition resizeRefresh = new PauseTransition(Duration.millis(150));
+    private final PauseTransition resizeRefresh = new PauseTransition(Duration.millis(200));
     private WebEngine webEngine;
     private Label fallbackCountLabel;
     private ListView<String> fallbackBusList;
@@ -120,7 +120,7 @@ public class MapFxView extends BorderPane {
     }
 
     private void configureResizeRefresh() {
-        resizeRefresh.setOnFinished(event -> executeMapScript("refreshMapSize()", false));
+        resizeRefresh.setOnFinished(event -> executeMapScript("fixMapSize()", false));
         widthProperty().addListener((observable, oldValue, newValue) -> scheduleMapSizeRefresh());
         heightProperty().addListener((observable, oldValue, newValue) -> scheduleMapSizeRefresh());
         sceneProperty().addListener((observable, oldScene, newScene) -> {
@@ -149,9 +149,12 @@ public class MapFxView extends BorderPane {
             fallbackActive = false;
             AppLogger.info("Map initialized centered on Cali.");
             executeMapScript("centerOnCali()", true);
-            scheduleMapSizeRefresh();
             flushPendingMarkers();
-            scheduleMapSizeRefresh();
+            // Give the JavaFX layout a full pass to commit its final dimensions before
+            // asking Leaflet to recalculate tile coverage.
+            PauseTransition layoutSettle = new PauseTransition(Duration.millis(300));
+            layoutSettle.setOnFinished(ev -> executeMapScript("fixMapSize()", false));
+            layoutSettle.play();
         } catch (RuntimeException exception) {
             activateFallback("Map scripts failed during initialization.");
         }

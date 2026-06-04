@@ -26,3 +26,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+datasets/mini/datagrams-MiniPilot.csv
+output/
+build/
+.gradle/
+.metals/

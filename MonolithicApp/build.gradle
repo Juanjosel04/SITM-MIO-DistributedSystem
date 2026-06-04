@@ -14,6 +14,22 @@ application {
 }
 
 javafx {
-    version = '17.0.2'
+    version = '21.0.6'
     modules = ['javafx.controls', 'javafx.web', 'javafx.fxml', 'javafx.swing']
+}
+
+task runSpeedV1(type: JavaExec) {
+    group = 'application'
+    description = 'V1 monolitica: velocidad promedio por ruta por mes (headless)'
+    mainClass = 'app.SpeedBatchMain'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir = rootProject.projectDir
+    def datagrams = project.findProperty('datagrams') ?: 'datasets/mini/chunck.csv'
+    def lines     = project.findProperty('lines')     ?: 'datasets/mini/lines-241-ActiveGT.csv'
+    def out       = project.findProperty('out')       ?: 'output/speed-results-v1.csv'
+    args = [datagrams.toString(), lines.toString(), out.toString()]
+}
+
+run {
+    workingDir = rootProject.projectDir
 }

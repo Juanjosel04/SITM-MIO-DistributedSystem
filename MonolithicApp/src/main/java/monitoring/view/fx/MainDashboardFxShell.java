@@ -2,16 +2,21 @@ package monitoring.view.fx;
 
 import analytics.controller.AnalyticsController;
 import analytics.view.fx.AnalyticsFxPanel;
+import core.speed.MonolithicSpeedJob;
+import core.speed.RouteCatalog;
+import core.speed.RouteMonthAccumulator;
 import events.model.OperationalEvent;
 import events.service.EventService;
 import events.view.fx.BusConsoleFxView;
 import javafx.application.Platform;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Separator;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -28,14 +33,25 @@ import monitoring.model.BusMarker;
 import monitoring.model.MonitoringMetric;
 import monitoring.service.MonitoringStateListener;
 
+import java.io.File;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class MainDashboardFxShell extends BorderPane {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+    // Configurable via -Dsitm.speed.datagrams=... / -Dsitm.speed.lines=...
+    private static final String V1_DATAGRAMS = System.getProperty(
+            "sitm.speed.datagrams", "datasets/mini/datagrams-MiniPilot.csv");
+    private static final String V1_LINES = System.getProperty(
+            "sitm.speed.lines", "datasets/mini/lines-241-ActiveGT.csv");
+
     private final MonitoringController controller;
     private final EventService eventService;
     private final AnalyticsController analyticsController;
@@ -43,11 +59,24 @@ public class MainDashboardFxShell extends BorderPane {
     private final Label statusLabel = new Label("Idle");
     private final MapFxView mapView;
     private final Map<String, Label> metricValues = new LinkedHashMap<String, Label>();
+    // Lists kept for data refresh logic (not shown in the center panel)
     private final ListView<String> busList = new ListView<String>();
     private final ListView<String> alertList = new ListView<String>();
     private final ListView<String> eventList = new ListView<String>();
     private final ListView<String> logList = new ListView<String>();
     private final List<String> recentLogs = new ArrayList<String>();
+
+    // ── V1 card state ────────────────────────────────────────────────────────
+    private volatile boolean v1Started       = false;
+    private final Label v1StatusLabel        = new Label("Calculando...");
+    private final Label v1ComputeMsLabel     = new Label("–");
+    private final Label v1ThroughputLabel    = new Label("–");
+    private final Label v1TotalReadLabel     = new Label("–");
+    private final Label v1ValidIntervals     = new Label("–");
+    private final Label v1RoutesResult       = new Label("–");
+    private final Label v1RoutesSinDatos     = new Label("–");
+    private final Label v1AvgSpeed           = new Label("–");
+    private final Label v1DatasetLabel       = new Label("–");
 
     public MainDashboardFxShell(MonitoringController controller, EventService eventService,
                                 AnalyticsController analyticsController) {
@@ -158,27 +187,161 @@ public class MainDashboardFxShell extends BorderPane {
         return card;
     }
 
+    // Map fills available width; V1 card keeps its preferred/minimum width.
     private HBox createCenterSection() {
         HBox center = new HBox(14);
         center.setPadding(new Insets(18));
-        center.getChildren().addAll(mapView, createRightPanels());
+        center.getChildren().addAll(mapView, createV1Panel());
         HBox.setHgrow(center.getChildren().get(0), Priority.ALWAYS);
-        HBox.setHgrow(center.getChildren().get(1), Priority.ALWAYS);
         return center;
     }
 
-    private VBox createRightPanels() {
-        VBox right = new VBox(12);
-        right.setMinWidth(420);
-        right.getChildren().addAll(
-                createSection("Active buses", busList),
-                createSection("Recent alerts", alertList),
-                createSection("Recent events", eventList));
-        VBox.setVgrow(right.getChildren().get(0), Priority.ALWAYS);
-        VBox.setVgrow(right.getChildren().get(1), Priority.ALWAYS);
-        VBox.setVgrow(right.getChildren().get(2), Priority.ALWAYS);
-        return right;
+    // ── V1 summary card ──────────────────────────────────────────────────────
+
+    private VBox createV1Panel() {
+        VBox card = new VBox(10);
+        card.setMinWidth(380);
+        card.setPadding(new Insets(16));
+        card.setStyle("-fx-background-color: white; -fx-border-color: #cbd5e1;"
+                + " -fx-border-radius: 4; -fx-background-radius: 4;");
+
+        Label title = new Label("Procesamiento V1 (monolítica)");
+        title.setTextFill(Color.web("#0f172a"));
+        title.setFont(Font.font("System", FontWeight.BOLD, 15));
+
+        Label subtitle = new Label("Núcleo headless · sin pipeline de monitoreo");
+        subtitle.setTextFill(Color.web("#64748b"));
+        subtitle.setFont(Font.font("System", 11));
+
+        v1StatusLabel.setTextFill(Color.web("#2563eb"));
+        v1StatusLabel.setFont(Font.font("System", FontWeight.BOLD, 13));
+
+        card.getChildren().addAll(title, subtitle, new Separator(), v1StatusLabel, buildV1MetricsGrid());
+
+        if (!v1Started) {
+            v1Started = true;
+            runV1Computation();
+        }
+        return card;
     }
+
+    private GridPane buildV1MetricsGrid() {
+        GridPane grid = new GridPane();
+        grid.setHgap(14);
+        grid.setVgap(9);
+        grid.setPadding(new Insets(4, 0, 0, 0));
+
+        styleV1Value(v1ComputeMsLabel);
+        styleV1Value(v1ThroughputLabel);
+        styleV1Value(v1TotalReadLabel);
+        styleV1Value(v1ValidIntervals);
+        styleV1Value(v1RoutesResult);
+        styleV1Value(v1RoutesSinDatos);
+        styleV1Value(v1AvgSpeed);
+        styleV1Value(v1DatasetLabel);
+
+        addV1Row(grid, 0, "Tiempo cómputo:",        v1ComputeMsLabel);
+        addV1Row(grid, 1, "Throughput:",             v1ThroughputLabel);
+        addV1Row(grid, 2, "Datagramas procesados:",  v1TotalReadLabel);
+        addV1Row(grid, 3, "Intervalos válidos:",     v1ValidIntervals);
+        addV1Row(grid, 4, "Rutas con resultado:",    v1RoutesResult);
+        addV1Row(grid, 5, "Rutas sin datos:",        v1RoutesSinDatos);
+        addV1Row(grid, 6, "Velocidad prom. global:", v1AvgSpeed);
+        addV1Row(grid, 7, "Dataset:",                v1DatasetLabel);
+
+        return grid;
+    }
+
+    private static void addV1Row(GridPane grid, int row, String text, Label valueLabel) {
+        Label lbl = new Label(text);
+        lbl.setTextFill(Color.web("#334155"));
+        lbl.setFont(Font.font("System", 12));
+        grid.add(lbl, 0, row);
+        grid.add(valueLabel, 1, row);
+    }
+
+    private static void styleV1Value(Label label) {
+        label.setTextFill(Color.web("#1e40af"));
+        label.setFont(Font.font("System", FontWeight.BOLD, 13));
+    }
+
+    private void runV1Computation() {
+        Task<Object[]> task = new Task<Object[]>() {
+            @Override
+            protected Object[] call() throws Exception {
+                File datagramsFile = new File(V1_DATAGRAMS);
+                if (!datagramsFile.exists()) {
+                    return null; // signals "file not found" to the success handler
+                }
+                RouteCatalog catalog = RouteCatalog.load(V1_LINES);
+                MonolithicSpeedJob job = new MonolithicSpeedJob(catalog);
+                long t0 = System.currentTimeMillis();
+                job.run(V1_DATAGRAMS);
+                long computeMs = System.currentTimeMillis() - t0;
+                return new Object[]{ catalog, job, computeMs };
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            Object[] result = task.getValue();
+            Platform.runLater(() -> {
+                if (result == null) {
+                    v1StatusLabel.setTextFill(Color.web("#dc2626"));
+                    v1StatusLabel.setText("Dataset no encontrado: " + new File(V1_DATAGRAMS).getName());
+                } else {
+                    updateV1Card((RouteCatalog) result[0], (MonolithicSpeedJob) result[1], (Long) result[2]);
+                }
+            });
+        });
+
+        task.setOnFailed(event -> {
+            Throwable ex = task.getException();
+            Platform.runLater(() -> {
+                v1StatusLabel.setTextFill(Color.web("#dc2626"));
+                v1StatusLabel.setText("Error: " + (ex != null ? ex.getMessage() : "desconocido"));
+            });
+        });
+
+        Thread thread = new Thread(task, "v1-speed-task");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void updateV1Card(RouteCatalog catalog, MonolithicSpeedJob job, long computeMs) {
+        MonolithicSpeedJob.Counters c = job.counters();
+        Map<String, RouteMonthAccumulator> accs = job.accumulators();
+
+        long throughput = computeMs > 0 ? (c.totalRead * 1000L / computeMs) : 0;
+
+        Set<Integer> routesWithData = new HashSet<Integer>();
+        double totalDist = 0.0, totalTime = 0.0;
+        for (Map.Entry<String, RouteMonthAccumulator> e : accs.entrySet()) {
+            String key = e.getKey();
+            int us = key.indexOf('_');
+            if (us > 0) {
+                try { routesWithData.add(Integer.parseInt(key.substring(0, us))); }
+                catch (NumberFormatException ignored) {}
+            }
+            totalDist += e.getValue().sumDistanceMeters();
+            totalTime += e.getValue().sumTimeSeconds();
+        }
+        int withResult = routesWithData.size();
+        int sinDatos   = Math.max(0, catalog.size() - withResult);
+        double avgKmh  = totalTime > 0.0 ? (totalDist / totalTime) * 3.6 : 0.0;
+
+        v1StatusLabel.setTextFill(Color.web("#16a34a"));
+        v1StatusLabel.setText("Cálculo completado");
+        v1ComputeMsLabel.setText(String.format(Locale.ROOT, "%,d ms", computeMs));
+        v1ThroughputLabel.setText(String.format(Locale.ROOT, "%,d d/s", throughput));
+        v1TotalReadLabel.setText(String.format(Locale.ROOT, "%,d", c.totalRead));
+        v1ValidIntervals.setText(String.format(Locale.ROOT, "%,d", c.validIntervals));
+        v1RoutesResult.setText(withResult + " / " + catalog.size());
+        v1RoutesSinDatos.setText(String.valueOf(sinDatos));
+        v1AvgSpeed.setText(String.format(Locale.ROOT, "%.2f km/h", avgKmh));
+        v1DatasetLabel.setText(new File(V1_DATAGRAMS).getName());
+    }
+
+    // ── Existing sections (unchanged) ─────────────────────────────────────────
 
     private VBox createSection(String title, ListView<String> listView) {
         VBox section = new VBox(8);

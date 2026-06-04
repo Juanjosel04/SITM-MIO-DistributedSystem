@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <title>SITM-MIO Monitoring</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Must precede leaflet.js: forces 2D top/left positioning instead of translate3d,
+         which WebKit in JavaFX WebView composes incorrectly (tiles and markers drift apart). -->
+    <script>window.L_DISABLE_3D = true;</script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
@@ -25,32 +28,53 @@
 
             map = L.map('map', {
                 zoomControl: true,
-                preferCanvas: true
+                preferCanvas: true,
+                zoomAnimation: false,
+                fadeAnimation: false,
+                markerZoomAnimation: false
             }).setView(CALI_CENTER, CALI_ZOOM);
+
+            window.__map = map;
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
 
-            refreshMapSize();
+            // Let the container finish its first layout pass before forcing a tile recalc.
+            setTimeout(function () { fixMapSize(); }, 200);
+
+            // Recompute tiles whenever the #map div itself is resized (e.g. splitter drags).
+            if (typeof ResizeObserver !== 'undefined') {
+                new ResizeObserver(function () { fixMapSize(); })
+                    .observe(document.getElementById('map'));
+            }
         }
 
         function isSitmMapReady() {
             return !!map;
         }
 
+        // Called by Java (webEngine.executeScript) after the WebView layout stabilises.
+        function fixMapSize() {
+            if (window.__map) {
+                window.__map.invalidateSize(false);
+            }
+        }
+
+        // Legacy helper kept for any internal JS callers; uses a small timeout so it is
+        // safe to call during layout events where the size hasn't committed yet.
         function refreshMapSize() {
             if (map) {
                 setTimeout(function () {
                     map.invalidateSize(false);
-                }, 100);
+                }, 200);
             }
         }
 
         function centerOnCali() {
             if (map) {
                 map.setView(CALI_CENTER, CALI_ZOOM, { animate: false });
-                refreshMapSize();
+                fixMapSize();
             }
         }
 
@@ -70,7 +94,7 @@
             return true;
         }
 
-        window.addEventListener('resize', refreshMapSize);
+        window.addEventListener('resize', function () { fixMapSize(); });
         initializeMap();
     </script>
 </body>
