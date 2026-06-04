@@ -44,7 +44,7 @@ public class ConcurrentDashboardView {
         cards.getChildren().addAll(
                 createMetric("Tiempo", metrics.getProcessingTime().toMillis() + " ms"),
                 createMetric("Datagramas", String.valueOf(metrics.getProcessedDatagrams())),
-                createMetric("Rutas activas", String.valueOf(metrics.getActiveRoutes())),
+                createMetric("Rutas cargadas", String.valueOf(metrics.getLoadedRoutes())),
                 createMetric("Paralelismo", String.valueOf(metrics.getParallelism())),
                 createMetric("Dataset", metrics.getDatasetName())
         );

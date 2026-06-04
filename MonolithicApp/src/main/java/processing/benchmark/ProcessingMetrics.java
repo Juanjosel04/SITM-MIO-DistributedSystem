@@ -8,6 +8,7 @@ import java.util.Objects;
  */
 public final class ProcessingMetrics {
     private final String datasetName;
+    private final long loadedRoutes;
     private final long processedDatagrams;
     private final int activeRoutes;
     private final int parallelism;
@@ -15,12 +16,14 @@ public final class ProcessingMetrics {
 
     public ProcessingMetrics(
             String datasetName,
+            long loadedRoutes,
             long processedDatagrams,
             int activeRoutes,
             int parallelism,
             Duration processingTime
     ) {
         this.datasetName = Objects.requireNonNull(datasetName, "datasetName");
+        this.loadedRoutes = loadedRoutes;
         this.processedDatagrams = processedDatagrams;
         this.activeRoutes = activeRoutes;
         this.parallelism = parallelism;
@@ -28,11 +31,15 @@ public final class ProcessingMetrics {
     }
 
     public static ProcessingMetrics empty() {
-        return new ProcessingMetrics("Not loaded", 0L, 0, 0, Duration.ZERO);
+        return new ProcessingMetrics("Not loaded", 0L, 0L, 0, 0, Duration.ZERO);
     }
 
     public String getDatasetName() {
         return datasetName;
+    }
+
+    public long getLoadedRoutes() {
+        return loadedRoutes;
     }
 
     public long getProcessedDatagrams() {
