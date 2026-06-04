@@ -2,6 +2,8 @@ package shared.utils;
 
 import core.model.Route;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +56,12 @@ public class RouteDisplayService {
         }
         String description = getDescription(routeId);
         return description == null ? shortName : shortName + " - " + description;
+    }
+
+    public synchronized List<Integer> getRouteIds() {
+        List<Integer> routeIds = new ArrayList<Integer>(routesById.keySet());
+        Collections.sort(routeIds);
+        return routeIds;
     }
 
     private String fallback(int routeId) {

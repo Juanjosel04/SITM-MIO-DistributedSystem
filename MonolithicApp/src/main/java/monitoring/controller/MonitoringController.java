@@ -95,6 +95,10 @@ public class MonitoringController {
         return monitoringService.getState().getRoutesLoaded();
     }
 
+    public List<Integer> getCatalogRouteIds() {
+        return monitoringService.getCatalogRouteIds();
+    }
+
     public String getRouteDisplayName(int routeId) {
         return monitoringService.getRouteDisplayName(routeId);
     }

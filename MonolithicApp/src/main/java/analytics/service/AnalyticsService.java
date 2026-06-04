@@ -87,6 +87,10 @@ public class AnalyticsService {
         if (isRestrictedScope(scope)) {
             return allowedRoutes(scope);
         }
+        List<Integer> catalogRoutes = monitoringController.getCatalogRouteIds();
+        if (!catalogRoutes.isEmpty()) {
+            return catalogRoutes;
+        }
         List<Integer> routes = new ArrayList<Integer>();
         for (BusPosition position : validHistoricalPositions()) {
             Integer route = Integer.valueOf(position.getRouteId());
@@ -340,6 +344,10 @@ public class AnalyticsService {
         }
         if (isRestrictedScope(scope)) {
             return allowedRoutes(scope);
+        }
+        List<Integer> catalogRoutes = monitoringController.getCatalogRouteIds();
+        if (!catalogRoutes.isEmpty()) {
+            return catalogRoutes;
         }
         List<Integer> routes = new ArrayList<Integer>();
         for (BusPosition position : validHistoricalPositions(scope)) {

@@ -39,6 +39,10 @@ public class MonitoringService implements SystemEventListener {
         return routeDisplayService.getFullDisplayName(routeId);
     }
 
+    public List<Integer> getCatalogRouteIds() {
+        return routeDisplayService.getRouteIds();
+    }
+
     public synchronized void addStateListener(MonitoringStateListener listener) {
         if (listener != null && !stateListeners.contains(listener)) {
             stateListeners.add(listener);
