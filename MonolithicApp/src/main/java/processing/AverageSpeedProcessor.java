@@ -1,10 +1,13 @@
 package processing;
 
-import processing.benchmark.ProcessingMetrics;
+import domain.Datagram;
+import domain.Route;
+
+import java.util.List;
 
 /**
- * Contract for future average-speed processors.
+ * Contract for average-speed processors in the V2 pipeline.
  */
 public interface AverageSpeedProcessor {
-    ProcessingMetrics process();
+    AverageSpeedProcessingResult process(List<Route> routes, List<Datagram> datagrams);
 }

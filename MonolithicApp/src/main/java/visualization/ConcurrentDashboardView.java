@@ -24,12 +24,14 @@ public class ConcurrentDashboardView {
     private static final String MUTED = "#64748b";
 
     public Parent createContent() {
-        ProcessingMetrics metrics = ProcessingMetrics.empty();
+        return createContent(ProcessingMetrics.empty(), 0, "Procesamiento V2 pendiente");
+    }
 
+    public Parent createContent(ProcessingMetrics metrics, int averageCount, String statusText) {
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: " + BACKGROUND + ";");
         root.setTop(createHeader(metrics));
-        root.setCenter(createBody());
+        root.setCenter(createBody(averageCount, statusText));
         return root;
     }
 
@@ -42,8 +44,8 @@ public class ConcurrentDashboardView {
 
         HBox cards = new HBox(12);
         cards.getChildren().addAll(
-                createMetric("Tiempo", metrics.getProcessingTime().toMillis() + " ms"),
-                createMetric("Datagramas", String.valueOf(metrics.getProcessedDatagrams())),
+                createMetric("Tiempo", metrics.getProcessingTimeMillis() + " ms"),
+                createMetric("Datagramas", metrics.getProcessedDatagrams() + " / " + metrics.getReadDatagrams()),
                 createMetric("Rutas cargadas", String.valueOf(metrics.getLoadedRoutes())),
                 createMetric("Paralelismo", String.valueOf(metrics.getParallelism())),
                 createMetric("Dataset", metrics.getDatasetName())
@@ -75,14 +77,14 @@ public class ConcurrentDashboardView {
         return card;
     }
 
-    private Parent createBody() {
+    private Parent createBody(int averageCount, String statusText) {
         GridPane grid = new GridPane();
         grid.setPadding(new Insets(0, 24, 24, 24));
         grid.setHgap(16);
         grid.setVgap(16);
 
         StackPane mapPlaceholder = createPanel("Mapa V2");
-        StackPane tablePlaceholder = createPanel("Promedios por ruta y mes");
+        StackPane tablePlaceholder = createPanel(statusText + "\nResultados preparados: " + averageCount);
 
         grid.add(mapPlaceholder, 0, 0);
         grid.add(tablePlaceholder, 1, 0);
