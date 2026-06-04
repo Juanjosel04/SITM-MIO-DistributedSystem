@@ -7,7 +7,7 @@ import java.awt.GraphicsEnvironment;
 public class Main {
     public static void main(String[] args) {
         if (isUiEnabled()) {
-            Application.launch(SitmMioFxApplication.class, args);
+            Application.launch(resolveApplicationClass(), args);
         } else {
             new ApplicationInitializer().run();
         }
@@ -19,5 +19,13 @@ public class Main {
             return false;
         }
         return !GraphicsEnvironment.isHeadless();
+    }
+
+    private static Class<? extends Application> resolveApplicationClass() {
+        String version = System.getProperty("sitm.app.version", "monolithic").trim();
+        if ("concurrent".equalsIgnoreCase(version) || "v2".equalsIgnoreCase(version)) {
+            return ConcurrentSitmMioApplication.class;
+        }
+        return SitmMioFxApplication.class;
     }
 }
