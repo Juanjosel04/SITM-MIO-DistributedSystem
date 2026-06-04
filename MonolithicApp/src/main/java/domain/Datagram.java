@@ -8,7 +8,7 @@ public final class Datagram {
     private final String busId;
     private final int routeId;
     private final LocalDateTime timestamp;
-    private final double speed;
+    private final double odometer;
     private final Double latitude;
     private final Double longitude;
 
@@ -17,7 +17,7 @@ public final class Datagram {
             String busId,
             int routeId,
             LocalDateTime timestamp,
-            double speed,
+            double odometer,
             Double latitude,
             Double longitude
     ) {
@@ -25,7 +25,7 @@ public final class Datagram {
         this.busId = normalize(busId);
         this.routeId = routeId;
         this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
-        this.speed = speed;
+        this.odometer = odometer;
         this.latitude = latitude;
         this.longitude = longitude;
     }
@@ -54,8 +54,8 @@ public final class Datagram {
         return timestamp.getMonthValue();
     }
 
-    public double getSpeed() {
-        return speed;
+    public double getOdometer() {
+        return odometer;
     }
 
     public Double getLatitude() {
@@ -70,11 +70,11 @@ public final class Datagram {
         return latitude != null && longitude != null;
     }
 
-    public BusPosition toBusPosition() {
+    public BusPosition toBusPosition(double speedKmh) {
         if (!hasPosition()) {
             throw new IllegalStateException("Datagram does not contain coordinates");
         }
-        return new BusPosition(busId, routeId, latitude.doubleValue(), longitude.doubleValue(), timestamp, speed);
+        return new BusPosition(busId, routeId, latitude.doubleValue(), longitude.doubleValue(), timestamp, speedKmh);
     }
 
     private String normalize(String value) {

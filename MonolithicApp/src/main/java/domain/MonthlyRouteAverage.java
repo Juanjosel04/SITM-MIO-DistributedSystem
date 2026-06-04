@@ -6,7 +6,7 @@ public final class MonthlyRouteAverage {
     private final int year;
     private final int month;
     private final double averageSpeed;
-    private final long datagramCount;
+    private final long intervalCount;
     private final boolean hasData;
 
     public MonthlyRouteAverage(
@@ -15,15 +15,15 @@ public final class MonthlyRouteAverage {
             int year,
             int month,
             double averageSpeed,
-            long datagramCount
+            long intervalCount
     ) {
         this.routeId = routeId;
         this.routeLabel = routeLabel == null ? "" : routeLabel.trim();
         this.year = year;
         this.month = month;
         this.averageSpeed = averageSpeed;
-        this.datagramCount = datagramCount;
-        this.hasData = datagramCount > 0;
+        this.intervalCount = intervalCount;
+        this.hasData = intervalCount > 0;
     }
 
     public static MonthlyRouteAverage noData(int routeId, String routeLabel, int year, int month) {
@@ -51,7 +51,11 @@ public final class MonthlyRouteAverage {
     }
 
     public long getDatagramCount() {
-        return datagramCount;
+        return intervalCount;
+    }
+
+    public long getIntervalCount() {
+        return intervalCount;
     }
 
     public boolean hasData() {

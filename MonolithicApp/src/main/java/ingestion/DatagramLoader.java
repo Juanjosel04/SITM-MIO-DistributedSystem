@@ -59,15 +59,15 @@ public final class DatagramLoader {
             String busId = value(row, headerIndex, new String[]{"BUSID", "BUS_ID", "BUSCODE", "BUS_CODE"}, 2);
             int routeId = Integer.parseInt(value(row, headerIndex, new String[]{"ROUTEID", "ROUTE_ID", "LINEID", "LINE_ID"}, 7));
             LocalDateTime timestamp = parseTimestamp(value(row, headerIndex, new String[]{"TIMESTAMP", "DATE_TIME", "DATETIME", "EVENT_TIME"}, 10));
-            Double speed = parseOptionalDouble(value(row, headerIndex, new String[]{"SPEED", "VELOCITY"}, 6));
-            if (speed == null) {
+            Double odometer = parseOptionalDouble(value(row, headerIndex, new String[]{"ODOMETER"}, 3));
+            if (odometer == null) {
                 return null;
             }
 
             Double latitude = parseOptionalCoordinate(value(row, headerIndex, new String[]{"LATITUDE", "LAT"}, 4));
             Double longitude = parseOptionalCoordinate(value(row, headerIndex, new String[]{"LONGITUDE", "LON", "LNG"}, 5));
             String id = value(row, headerIndex, new String[]{"ID", "DATAGRAM_ID"}, 11);
-            return new Datagram(id, busId, routeId, timestamp, speed.doubleValue(), latitude, longitude);
+            return new Datagram(id, busId, routeId, timestamp, odometer.doubleValue(), latitude, longitude);
         } catch (RuntimeException exception) {
             return null;
         }

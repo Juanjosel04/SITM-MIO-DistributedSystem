@@ -60,8 +60,8 @@ public final class AverageSpeedAggregator {
                             label,
                             month.year,
                             month.month,
-                            accumulator.getAverage(),
-                            accumulator.getCount()
+                            accumulator.getAverageKmh(),
+                            accumulator.getIntervals()
                     ));
                 }
             }

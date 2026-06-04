@@ -6,11 +6,9 @@ import ingestion.ConcurrentDatasetPaths;
 import ingestion.DatagramLoader;
 import ingestion.RouteLoader;
 import javafx.application.Application;
-import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import processing.AverageSpeedProcessingResult;
-import processing.benchmark.ProcessingMetrics;
 import processing.forkjoin.ForkJoinAverageSpeedProcessor;
 import visualization.ConcurrentDashboardView;
 
@@ -25,17 +23,19 @@ public class ConcurrentSitmMioApplication extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        Scene scene = new Scene(loadInitialContent(), INITIAL_WIDTH, INITIAL_HEIGHT);
+        ConcurrentDashboardView dashboardView = new ConcurrentDashboardView();
+        Scene scene = new Scene(dashboardView.createContent(), INITIAL_WIDTH, INITIAL_HEIGHT);
 
-        primaryStage.setTitle("SITM-MIO - Version Concurrente");
+        primaryStage.setTitle("SITM-MIO V2 Concurrente - Fork/Join");
         primaryStage.setMinWidth(1000);
         primaryStage.setMinHeight(650);
         primaryStage.setScene(scene);
         primaryStage.show();
+
+        runProcessing(dashboardView);
     }
 
-    private Parent loadInitialContent() {
-        ConcurrentDashboardView dashboardView = new ConcurrentDashboardView();
+    private void runProcessing(ConcurrentDashboardView dashboardView) {
         try {
             RouteLoader routeLoader = new RouteLoader();
             DatagramLoader datagramLoader = new DatagramLoader();
@@ -50,17 +50,12 @@ public class ConcurrentSitmMioApplication extends Application {
                     dataset
             );
             AverageSpeedProcessingResult result = processor.process(routes, datagrams);
-            return dashboardView.createContent(
-                    result.getMetrics(),
-                    result.getAverages().size(),
-                    "Nucleo Fork/Join ejecutado"
-            );
+            dashboardView.showResult(result);
         } catch (Exception exception) {
-            return dashboardView.createContent(
-                    ProcessingMetrics.empty(),
-                    0,
-                    "No se pudo cargar el procesamiento V2"
-            );
+            Throwable error = exception;
+            String message = error == null ? "Error desconocido" : error.getMessage();
+            System.err.println("V2 processing failed: " + message);
+            dashboardView.showError("No se pudo cargar el procesamiento V2: " + message);
         }
     }
 }

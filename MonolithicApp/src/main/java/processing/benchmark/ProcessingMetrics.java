@@ -3,44 +3,83 @@ package processing.benchmark;
 import java.time.Duration;
 import java.util.Objects;
 
-/**
- * Minimal immutable metrics snapshot for the V2 processing pipeline.
- */
 public final class ProcessingMetrics {
     private final String datasetName;
     private final long loadedRoutes;
     private final long readDatagrams;
-    private final long processedDatagrams;
-    private final long routeMonthCombinations;
+    private final long groupedDatagrams;
+    private final long processedBuses;
+    private final long validIntervals;
+    private final long routesWithResult;
     private final long routesWithoutData;
+    private final long routeMonthCombinations;
+    private final ProcessingCounters counters;
     private final int parallelism;
     private final int threshold;
-    private final Duration processingTime;
+    private final Duration forkJoinProcessingTime;
+    private final Duration totalProcessingTime;
+    private final double throughputDatagramsPerSecond;
+    private final double throughputIntervalsPerSecond;
+    private final double globalAverageSpeedKmh;
 
     public ProcessingMetrics(
             String datasetName,
             long loadedRoutes,
             long readDatagrams,
-            long processedDatagrams,
-            long routeMonthCombinations,
+            long groupedDatagrams,
+            long processedBuses,
+            long validIntervals,
+            long routesWithResult,
             long routesWithoutData,
+            long routeMonthCombinations,
+            ProcessingCounters counters,
             int parallelism,
             int threshold,
-            Duration processingTime
+            Duration forkJoinProcessingTime,
+            Duration totalProcessingTime,
+            double throughputDatagramsPerSecond,
+            double throughputIntervalsPerSecond,
+            double globalAverageSpeedKmh
     ) {
         this.datasetName = Objects.requireNonNull(datasetName, "datasetName");
         this.loadedRoutes = loadedRoutes;
         this.readDatagrams = readDatagrams;
-        this.processedDatagrams = processedDatagrams;
-        this.routeMonthCombinations = routeMonthCombinations;
+        this.groupedDatagrams = groupedDatagrams;
+        this.processedBuses = processedBuses;
+        this.validIntervals = validIntervals;
+        this.routesWithResult = routesWithResult;
         this.routesWithoutData = routesWithoutData;
+        this.routeMonthCombinations = routeMonthCombinations;
+        this.counters = counters == null ? new ProcessingCounters() : counters;
         this.parallelism = parallelism;
         this.threshold = threshold;
-        this.processingTime = Objects.requireNonNull(processingTime, "processingTime");
+        this.forkJoinProcessingTime = Objects.requireNonNull(forkJoinProcessingTime, "forkJoinProcessingTime");
+        this.totalProcessingTime = Objects.requireNonNull(totalProcessingTime, "totalProcessingTime");
+        this.throughputDatagramsPerSecond = throughputDatagramsPerSecond;
+        this.throughputIntervalsPerSecond = throughputIntervalsPerSecond;
+        this.globalAverageSpeedKmh = globalAverageSpeedKmh;
     }
 
     public static ProcessingMetrics empty() {
-        return new ProcessingMetrics("Not loaded", 0L, 0L, 0L, 0L, 0L, 0, 0, Duration.ZERO);
+        return new ProcessingMetrics(
+                "Not loaded",
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                new ProcessingCounters(),
+                0,
+                0,
+                Duration.ZERO,
+                Duration.ZERO,
+                0.0,
+                0.0,
+                0.0
+        );
     }
 
     public String getDatasetName() {
@@ -55,20 +94,76 @@ public final class ProcessingMetrics {
         return readDatagrams;
     }
 
+    public long getGroupedDatagrams() {
+        return groupedDatagrams;
+    }
+
+    public long getProcessedBuses() {
+        return processedBuses;
+    }
+
+    public long getValidIntervals() {
+        return validIntervals;
+    }
+
     public long getProcessedDatagrams() {
-        return processedDatagrams;
+        return validIntervals;
     }
 
     public int getActiveRoutes() {
         return (int) loadedRoutes;
     }
 
-    public long getRouteMonthCombinations() {
-        return routeMonthCombinations;
+    public long getRoutesWithResult() {
+        return routesWithResult;
     }
 
     public long getRoutesWithoutData() {
         return routesWithoutData;
+    }
+
+    public long getRouteMonthCombinations() {
+        return routeMonthCombinations;
+    }
+
+    public ProcessingCounters getCounters() {
+        return counters;
+    }
+
+    public long getNoRouteOrInactive() {
+        return counters.getNoRouteOrInactive();
+    }
+
+    public long getMalformedDatagrams() {
+        return counters.getMalformedDatagrams();
+    }
+
+    public long getDiscardNoPreviousPoint() {
+        return counters.getDiscardNoPreviousPoint();
+    }
+
+    public long getDiscardRouteChanged() {
+        return counters.getDiscardRouteChanged();
+    }
+
+    public long getDiscardDeltaTimeInvalid() {
+        return counters.getDiscardDeltaTimeInvalid();
+    }
+
+    public long getDiscardDeltaTimeTooLong() {
+        return counters.getDiscardDeltaTimeTooLong();
+    }
+
+    public long getDiscardBadOdometer() {
+        return counters.getDiscardBadOdometer();
+    }
+
+    public long getDiscardNoDistanceGain() {
+        return counters.getDiscardNoDistanceGain();
+    }
+
+    public long getDiscardSpeedTooHigh() {
+        return counters.getDiscardSpeedTooHigh();
     }
 
     public int getParallelism() {
@@ -80,10 +175,30 @@ public final class ProcessingMetrics {
     }
 
     public Duration getProcessingTime() {
-        return processingTime;
+        return totalProcessingTime;
     }
 
     public long getProcessingTimeMillis() {
-        return processingTime.toMillis();
+        return totalProcessingTime.toMillis();
+    }
+
+    public long getForkJoinProcessingTimeMillis() {
+        return forkJoinProcessingTime.toMillis();
+    }
+
+    public long getTotalProcessingTimeMillis() {
+        return totalProcessingTime.toMillis();
+    }
+
+    public double getThroughputDatagramsPerSecond() {
+        return throughputDatagramsPerSecond;
+    }
+
+    public double getThroughputIntervalsPerSecond() {
+        return throughputIntervalsPerSecond;
+    }
+
+    public double getGlobalAverageSpeedKmh() {
+        return globalAverageSpeedKmh;
     }
 }
