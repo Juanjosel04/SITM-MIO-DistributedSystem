@@ -2,3 +2,5 @@ rootProject.name = 'SITM-MIO-DistributedSystem'
 
 include 'middleware'
 include 'MonolithicApp'
+include 'MasterNode'
+include 'WorkerNode'

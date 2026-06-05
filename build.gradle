@@ -9,13 +9,18 @@ subprojects {
 
     apply plugin: 'java'
 
-    sourceCompatibility = 1.8
-    targetCompatibility = 1.8
+    if (project.name == 'MasterNode' || project.name == 'WorkerNode') {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    } else {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
 
-    dependencies {
+        dependencies {
 
-        implementation 'com.zeroc:ice:3.7.10'
+            implementation 'com.zeroc:ice:3.7.10'
 
-        implementation 'org.postgresql:postgresql:42.2.27'
+            implementation 'org.postgresql:postgresql:42.2.27'
+        }
     }
 }

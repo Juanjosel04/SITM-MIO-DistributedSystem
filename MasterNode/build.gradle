@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+def javafxVersion = '17.0.2'
+def currentOs = System.getProperty('os.name').toLowerCase()
+def javafxPlatform = currentOs.contains('win') ? 'win' : (currentOs.contains('mac') ? 'mac' : 'linux')
+def java17Home = file('C:/Program Files/BellSoft/LibericaJDK-17')
+
+dependencies {
+    implementation "org.openjfx:javafx-base:${javafxVersion}:${javafxPlatform}"
+    implementation "org.openjfx:javafx-graphics:${javafxVersion}:${javafxPlatform}"
+    implementation "org.openjfx:javafx-controls:${javafxVersion}:${javafxPlatform}"
+}
+
+application {
+    mainClassName = 'master.app.MasterNodeApplication'
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    options.incremental = false
+    options.fork = true
+    options.forkOptions.executable = new File(java17Home, 'bin/javac.exe').absolutePath
+}
+
+run {
+    executable = new File(java17Home, 'bin/java.exe').absolutePath
+    doFirst {
+        jvmArgs = [
+                '--module-path', configurations.runtimeClasspath.asPath,
+                '--add-modules', 'javafx.controls'
+        ]
+    }
+}
