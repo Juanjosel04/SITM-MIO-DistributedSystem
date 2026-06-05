@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <title>SITM-MIO Monitoring</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script>window.L_DISABLE_3D = true;</script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
+        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
         body { overflow: hidden; }
     </style>
 </head>
@@ -17,6 +18,7 @@
         var CALI_ZOOM = 12;
         var map = null;
         var markers = {};
+        window.__busMarkers = window.__busMarkers || {};
 
         function initializeMap() {
             if (map || typeof L === 'undefined') {
@@ -25,32 +27,38 @@
 
             map = L.map('map', {
                 zoomControl: true,
-                preferCanvas: true
+                preferCanvas: true,
+                zoomAnimation: false,
+                fadeAnimation: false,
+                markerZoomAnimation: false
             }).setView(CALI_CENTER, CALI_ZOOM);
+            window.__map = map;
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
 
-            refreshMapSize();
+            fixMapSize();
         }
 
         function isSitmMapReady() {
             return !!map;
         }
 
-        function refreshMapSize() {
-            if (map) {
-                setTimeout(function () {
-                    map.invalidateSize(false);
-                }, 100);
+        function fixMapSize() {
+            if (window.__map) {
+                window.__map.invalidateSize(false);
             }
+        }
+
+        function refreshMapSize() {
+            fixMapSize();
         }
 
         function centerOnCali() {
             if (map) {
                 map.setView(CALI_CENTER, CALI_ZOOM, { animate: false });
-                refreshMapSize();
+                fixMapSize();
             }
         }
 
@@ -70,8 +78,56 @@
             return true;
         }
 
-        window.addEventListener('resize', refreshMapSize);
+        function updateMovingMarkers(markersJson) {
+            if (!window.__map || typeof L === 'undefined') {
+                return false;
+            }
+
+            var updates = JSON.parse(markersJson || "[]");
+            updates.forEach(function (m) {
+                if (!m || !m.busId) {
+                    return;
+                }
+                var latlng = [m.latitude, m.longitude];
+                var marker = window.__busMarkers[m.busId];
+                if (!marker) {
+                    marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        color: "#0f766e",
+                        weight: 2,
+                        fillColor: "#14b8a6",
+                        fillOpacity: 0.85
+                    }).addTo(window.__map);
+                    window.__busMarkers[m.busId] = marker;
+                } else {
+                    marker.setLatLng(latlng);
+                }
+                marker.bindPopup(m.popupText || "");
+            });
+            return true;
+        }
+
+        function clearMovingMarkers() {
+            if (!window.__map) {
+                return;
+            }
+            Object.keys(window.__busMarkers).forEach(function (busId) {
+                window.__map.removeLayer(window.__busMarkers[busId]);
+            });
+            window.__busMarkers = {};
+        }
+
+        window.addEventListener('resize', fixMapSize);
+        (function () {
+            var el = document.getElementById('map');
+            if (window.ResizeObserver && el) {
+                new ResizeObserver(function () {
+                    fixMapSize();
+                }).observe(el);
+            }
+        })();
         initializeMap();
+        setTimeout(fixMapSize, 200);
     </script>
 </body>
 </html>

@@ -2,6 +2,7 @@ package processing.benchmark;
 
 public final class ProcessingCounters {
     private long groupedDatagrams;
+    private long invalidLines;
     private long processedBuses;
     private long validIntervals;
     private long noRouteOrInactive;
@@ -16,6 +17,14 @@ public final class ProcessingCounters {
 
     public void incrementGroupedDatagrams() {
         groupedDatagrams++;
+    }
+
+    public void incrementInvalidLines() {
+        invalidLines++;
+    }
+
+    public void addInvalidLines(long amount) {
+        invalidLines += Math.max(0L, amount);
     }
 
     public void incrementProcessedBuses() {
@@ -67,6 +76,7 @@ public final class ProcessingCounters {
             return;
         }
         groupedDatagrams += other.groupedDatagrams;
+        invalidLines += other.invalidLines;
         processedBuses += other.processedBuses;
         validIntervals += other.validIntervals;
         noRouteOrInactive += other.noRouteOrInactive;
@@ -82,6 +92,10 @@ public final class ProcessingCounters {
 
     public long getGroupedDatagrams() {
         return groupedDatagrams;
+    }
+
+    public long getInvalidLines() {
+        return invalidLines;
     }
 
     public long getProcessedBuses() {

@@ -58,7 +58,7 @@ public final class CsvReader {
         throw new IOException("Dataset file not found: " + path);
     }
 
-    static List<String> split(String line) {
+    public static List<String> split(String line) {
         List<String> values = new ArrayList<String>();
         StringBuilder current = new StringBuilder();
         boolean insideQuotes = false;
@@ -79,7 +79,7 @@ public final class CsvReader {
         return values;
     }
 
-    static String clean(String value) {
+    public static String clean(String value) {
         if (value == null) {
             return "";
         }

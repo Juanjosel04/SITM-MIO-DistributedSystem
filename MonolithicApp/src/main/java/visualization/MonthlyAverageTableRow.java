@@ -24,7 +24,7 @@ public final class MonthlyAverageTableRow {
                 : average.getRouteLabel().trim();
         this.yearText = String.valueOf(average.getYear());
         this.monthText = String.format(Locale.US, "%02d", Integer.valueOf(average.getMonth()));
-        this.averageSpeed = average.hasData() ? String.format(Locale.US, "%.2f", Double.valueOf(average.getAverageSpeed())) : "-";
+        this.averageSpeed = average.hasData() ? String.format(Locale.US, "%.2f km/h", Double.valueOf(average.getAverageSpeed())) : "-";
         this.intervalCount = String.valueOf(average.getIntervalCount());
         this.status = average.hasData() ? "Con datos" : "Sin datos";
     }

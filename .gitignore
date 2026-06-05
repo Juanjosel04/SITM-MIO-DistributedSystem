@@ -26,3 +26,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Large local datasets
+datasets/medium/
+datasets/mini/bloque_*.csv
+datasets/mini/*gb*.csv
+datasets/mini/datagrams-*.csv

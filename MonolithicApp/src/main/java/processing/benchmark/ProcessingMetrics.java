@@ -21,6 +21,10 @@ public final class ProcessingMetrics {
     private final double throughputDatagramsPerSecond;
     private final double throughputIntervalsPerSecond;
     private final double globalAverageSpeedKmh;
+    private final int bucketCount;
+    private final long bucketizationTimeMillis;
+    private final long maxBucketApproxLines;
+    private final String tempDirectoryUsed;
 
     public ProcessingMetrics(
             String datasetName,
@@ -41,6 +45,54 @@ public final class ProcessingMetrics {
             double throughputIntervalsPerSecond,
             double globalAverageSpeedKmh
     ) {
+        this(
+                datasetName,
+                loadedRoutes,
+                readDatagrams,
+                groupedDatagrams,
+                processedBuses,
+                validIntervals,
+                routesWithResult,
+                routesWithoutData,
+                routeMonthCombinations,
+                counters,
+                parallelism,
+                threshold,
+                forkJoinProcessingTime,
+                totalProcessingTime,
+                throughputDatagramsPerSecond,
+                throughputIntervalsPerSecond,
+                globalAverageSpeedKmh,
+                0,
+                0L,
+                0L,
+                ""
+        );
+    }
+
+    public ProcessingMetrics(
+            String datasetName,
+            long loadedRoutes,
+            long readDatagrams,
+            long groupedDatagrams,
+            long processedBuses,
+            long validIntervals,
+            long routesWithResult,
+            long routesWithoutData,
+            long routeMonthCombinations,
+            ProcessingCounters counters,
+            int parallelism,
+            int threshold,
+            Duration forkJoinProcessingTime,
+            Duration totalProcessingTime,
+            double throughputDatagramsPerSecond,
+            double throughputIntervalsPerSecond,
+            double globalAverageSpeedKmh,
+            int bucketCount,
+            long bucketizationTimeMillis,
+            long maxBucketApproxLines,
+            String tempDirectoryUsed
+    ) {
         this.datasetName = Objects.requireNonNull(datasetName, "datasetName");
         this.loadedRoutes = loadedRoutes;
         this.readDatagrams = readDatagrams;
@@ -58,6 +110,10 @@ public final class ProcessingMetrics {
         this.throughputDatagramsPerSecond = throughputDatagramsPerSecond;
         this.throughputIntervalsPerSecond = throughputIntervalsPerSecond;
         this.globalAverageSpeedKmh = globalAverageSpeedKmh;
+        this.bucketCount = bucketCount;
+        this.bucketizationTimeMillis = bucketizationTimeMillis;
+        this.maxBucketApproxLines = maxBucketApproxLines;
+        this.tempDirectoryUsed = tempDirectoryUsed == null ? "" : tempDirectoryUsed;
     }
 
     public static ProcessingMetrics empty() {
@@ -78,7 +134,11 @@ public final class ProcessingMetrics {
                 Duration.ZERO,
                 0.0,
                 0.0,
-                0.0
+                0.0,
+                0,
+                0L,
+                0L,
+                ""
         );
     }
 
@@ -136,6 +196,10 @@ public final class ProcessingMetrics {
 
     public long getMalformedDatagrams() {
         return counters.getMalformedDatagrams();
+    }
+
+    public long getInvalidLines() {
+        return counters.getInvalidLines();
     }
 
     public long getDiscardNoPreviousPoint() {
@@ -200,5 +264,21 @@ public final class ProcessingMetrics {
 
     public double getGlobalAverageSpeedKmh() {
         return globalAverageSpeedKmh;
+    }
+
+    public int getBucketCount() {
+        return bucketCount;
+    }
+
+    public long getBucketizationTimeMillis() {
+        return bucketizationTimeMillis;
+    }
+
+    public long getMaxBucketApproxLines() {
+        return maxBucketApproxLines;
+    }
+
+    public String getTempDirectoryUsed() {
+        return tempDirectoryUsed;
     }
 }

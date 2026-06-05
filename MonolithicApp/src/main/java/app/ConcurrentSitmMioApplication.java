@@ -3,13 +3,13 @@ package app;
 import domain.Datagram;
 import domain.Route;
 import ingestion.ConcurrentDatasetPaths;
-import ingestion.DatagramLoader;
 import ingestion.RouteLoader;
 import javafx.application.Application;
+import javafx.concurrent.Task;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import processing.AverageSpeedProcessingResult;
-import processing.forkjoin.ForkJoinAverageSpeedProcessor;
+import processing.streaming.StreamingBucketedAverageSpeedProcessor;
 import visualization.ConcurrentDashboardView;
 
 import java.util.List;
@@ -36,26 +36,44 @@ public class ConcurrentSitmMioApplication extends Application {
     }
 
     private void runProcessing(ConcurrentDashboardView dashboardView) {
-        try {
-            RouteLoader routeLoader = new RouteLoader();
-            DatagramLoader datagramLoader = new DatagramLoader();
-            String dataset = ConcurrentDatasetPaths.defaultDatagramsFile();
+        dashboardView.showProcessingState("Procesando con Fork/Join...");
+        Task<LoadedConcurrentResult> task = new Task<LoadedConcurrentResult>() {
+            @Override
+            protected LoadedConcurrentResult call() throws Exception {
+                RouteLoader routeLoader = new RouteLoader();
+                String dataset = ConcurrentDatasetPaths.defaultDatagramsFile();
 
-            List<Route> routes = routeLoader.loadDefault();
-            List<Datagram> datagrams = datagramLoader.load(dataset);
+                List<Route> routes = routeLoader.loadDefault();
 
-            ForkJoinAverageSpeedProcessor processor = new ForkJoinAverageSpeedProcessor(
-                    ForkJoinAverageSpeedProcessor.DEFAULT_PARALLELISM,
-                    ForkJoinAverageSpeedProcessor.DEFAULT_THRESHOLD,
-                    dataset
-            );
-            AverageSpeedProcessingResult result = processor.process(routes, datagrams);
-            dashboardView.showResult(result);
-        } catch (Exception exception) {
-            Throwable error = exception;
+                StreamingBucketedAverageSpeedProcessor processor = new StreamingBucketedAverageSpeedProcessor(dataset);
+                AverageSpeedProcessingResult result = processor.process(routes, null);
+                return new LoadedConcurrentResult(result, result.getVisualDatagrams());
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            LoadedConcurrentResult loadedResult = task.getValue();
+            dashboardView.showResult(loadedResult.result, loadedResult.datagrams);
+        });
+        task.setOnFailed(event -> {
+            Throwable error = task.getException();
             String message = error == null ? "Error desconocido" : error.getMessage();
             System.err.println("V2 processing failed: " + message);
             dashboardView.showError("No se pudo cargar el procesamiento V2: " + message);
+        });
+
+        Thread loaderThread = new Thread(task, "sitm-v2-dashboard-loader");
+        loaderThread.setDaemon(true);
+        loaderThread.start();
+    }
+
+    private static final class LoadedConcurrentResult {
+        private final AverageSpeedProcessingResult result;
+        private final List<Datagram> datagrams;
+
+        private LoadedConcurrentResult(AverageSpeedProcessingResult result, List<Datagram> datagrams) {
+            this.result = result;
+            this.datagrams = datagrams;
         }
     }
 }
