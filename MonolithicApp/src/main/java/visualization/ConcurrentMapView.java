@@ -128,7 +128,12 @@ public class ConcurrentMapView extends BorderPane {
         if (points == null || points.isEmpty()) {
             return Collections.<MapPlaybackPoint>emptyList();
         }
-        return new MapPlaybackSampler().sample(points);
+        // Reservoir sampling is applied upstream (StreamingDatagramBucketizer), so the
+        // incoming list is already bounded and representative.  Apply a hard cap here as
+        // a safety net so the WebView never receives more than MAX_PLAYBACK_POINTS markers,
+        // regardless of how the caller obtained the list.
+        int limit = Math.min(points.size(), MapPlaybackSampler.MAX_PLAYBACK_POINTS);
+        return new ArrayList<MapPlaybackPoint>(points.subList(0, limit));
     }
 
     private String toJson(List<MapPlaybackPoint> points) {

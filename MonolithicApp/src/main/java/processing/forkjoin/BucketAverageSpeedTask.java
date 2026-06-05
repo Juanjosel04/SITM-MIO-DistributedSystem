@@ -102,64 +102,59 @@ public final class BucketAverageSpeedTask extends RecursiveTask<PartialSpeedResu
         ProcessingCounters counters = result.getCounters();
         counters.incrementGroupedDatagrams();
 
+        // V1-aligned: inactive-route records are counted but must NOT update previousByBus,
+        // so that a subsequent active-route record can still pair with the last active one.
+        if (!isActiveRoute(current.getRouteId())) {
+            counters.incrementNoRouteOrInactive();
+            return;
+        }
+
         BucketedDatagramRecord previous = previousByBus.get(current.getBusId());
         if (previous == null) {
+            // First active-route record seen for this bus.
             counters.incrementProcessedBuses();
             counters.incrementDiscardNoPreviousPoint();
             previousByBus.put(current.getBusId(), current);
             return;
         }
 
-        if (!isActiveRoute(previous.getRouteId()) || !isActiveRoute(current.getRouteId())) {
-            counters.incrementNoRouteOrInactive();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
+        // Apply discard checks in the same order as V1 (MonolithicSpeedJob.processLine).
         if (previous.getRouteId() != current.getRouteId()) {
             counters.incrementDiscardRouteChanged();
-            previousByBus.put(current.getBusId(), current);
-            return;
+        } else {
+            double deltaTimeSeconds = Duration.between(previous.getTimestamp(), current.getTimestamp()).toMillis() / 1000.0;
+            if (deltaTimeSeconds <= 0.0) {
+                counters.incrementDiscardDeltaTimeInvalid();
+            } else if (deltaTimeSeconds > MAX_INTERVAL_SECONDS) {
+                counters.incrementDiscardDeltaTimeTooLong();
+            } else if (previous.getOdometer() < 0.0 || current.getOdometer() < 0.0) {
+                counters.incrementDiscardBadOdometer();
+            } else {
+                double deltaDistanceMeters = current.getOdometer() - previous.getOdometer();
+                if (deltaDistanceMeters <= 0.0) {
+                    counters.incrementDiscardNoDistanceGain();
+                } else {
+                    double speedKmh = (deltaDistanceMeters / deltaTimeSeconds) * 3.6;
+                    if (speedKmh > MAX_SPEED_KMH) {
+                        counters.incrementDiscardSpeedTooHigh();
+                    } else {
+                        RouteMonthKey key = new RouteMonthKey(
+                                current.getRouteId(),
+                                current.getTimestamp().getYear(),
+                                current.getTimestamp().getMonthValue());
+                        SpeedAccumulator accumulator = result.getAccumulators().get(key);
+                        if (accumulator == null) {
+                            accumulator = new SpeedAccumulator();
+                            result.getAccumulators().put(key, accumulator);
+                        }
+                        accumulator.addInterval(deltaDistanceMeters, deltaTimeSeconds);
+                        counters.incrementValidIntervals();
+                    }
+                }
+            }
         }
 
-        double deltaTimeSeconds = Duration.between(previous.getTimestamp(), current.getTimestamp()).toMillis() / 1000.0;
-        if (deltaTimeSeconds <= 0.0) {
-            counters.incrementDiscardDeltaTimeInvalid();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
-        if (deltaTimeSeconds > MAX_INTERVAL_SECONDS) {
-            counters.incrementDiscardDeltaTimeTooLong();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
-        if (previous.getOdometer() < 0.0 || current.getOdometer() < 0.0) {
-            counters.incrementDiscardBadOdometer();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
-
-        double deltaDistanceMeters = current.getOdometer() - previous.getOdometer();
-        if (deltaDistanceMeters <= 0.0) {
-            counters.incrementDiscardNoDistanceGain();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
-
-        double speedKmh = (deltaDistanceMeters / deltaTimeSeconds) * 3.6;
-        if (speedKmh > MAX_SPEED_KMH) {
-            counters.incrementDiscardSpeedTooHigh();
-            previousByBus.put(current.getBusId(), current);
-            return;
-        }
-
-        RouteMonthKey key = new RouteMonthKey(current.getRouteId(), current.getTimestamp().getYear(), current.getTimestamp().getMonthValue());
-        SpeedAccumulator accumulator = result.getAccumulators().get(key);
-        if (accumulator == null) {
-            accumulator = new SpeedAccumulator();
-            result.getAccumulators().put(key, accumulator);
-        }
-        accumulator.addInterval(deltaDistanceMeters, deltaTimeSeconds);
-        counters.incrementValidIntervals();
+        // Always update the last active-route point for this bus (mirrors V1).
         previousByBus.put(current.getBusId(), current);
     }
 

@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class StreamingDatagramBucketizer {
     private static final Charset DATASET_CHARSET = Charset.forName("UTF-8");
@@ -28,7 +29,7 @@ public final class StreamingDatagramBucketizer {
         Path tempDirectory = Files.createTempDirectory("sitm-v2-buckets-");
         List<Path> bucketFiles = createBucketFiles(tempDirectory, config.getBucketCount());
         long[] bucketLineCounts = new long[config.getBucketCount()];
-        AdaptiveVisualDatagramSampler visualSampler = new AdaptiveVisualDatagramSampler(config.getVisualSampleLimit());
+        ReservoirVisualDatagramSampler visualSampler = new ReservoirVisualDatagramSampler(config.getVisualSampleLimit());
         BufferedWriter[] writers = openWriters(bucketFiles);
 
         long readDatagrams = 0L;
@@ -167,60 +168,54 @@ public final class StreamingDatagramBucketizer {
         return nanos / 1_000_000L;
     }
 
-    private static final class AdaptiveVisualDatagramSampler {
-        private static final int INITIAL_SAMPLE_STEP = 10;
+    /**
+     * Reservoir sampler (Algorithm R, Vitter 1985).
+     *
+     * Maintains a fixed-size reservoir of exactly {@code reservoirSize} elements
+     * chosen uniformly at random from the full stream, in a single pass and with
+     * O(reservoirSize) memory regardless of stream length.  Only records that have
+     * both coordinates and a valid route id are eligible; the rest are ignored so
+     * they cannot corrupt the visual sample.
+     */
+    private static final class ReservoirVisualDatagramSampler {
+        private final int reservoirSize;
+        private final Datagram[] reservoir;
+        private long eligibleCount;
 
-        private final int maxSampleSize;
-        private final List<Datagram> sample = new ArrayList<Datagram>();
-        private final java.util.Map<String, Long> candidateCountByBusId = new java.util.HashMap<String, Long>();
-        private int sampleStep = INITIAL_SAMPLE_STEP;
-
-        private AdaptiveVisualDatagramSampler(int maxSampleSize) {
-            this.maxSampleSize = Math.max(5000, maxSampleSize);
+        private ReservoirVisualDatagramSampler(int reservoirSize) {
+            this.reservoirSize = Math.max(1, reservoirSize);
+            this.reservoir = new Datagram[this.reservoirSize];
+            this.eligibleCount = 0L;
         }
 
         private void offer(BucketedDatagramRecord record) {
-            if (record == null || record.getBusId().isEmpty()) {
+            if (record == null
+                    || record.getBusId().isEmpty()
+                    || record.getRouteId() == -1
+                    || record.getLatitude() == null
+                    || record.getLongitude() == null) {
                 return;
             }
-            if (record.getRouteId() == -1) {
-                return;
+            if (eligibleCount < reservoirSize) {
+                reservoir[(int) eligibleCount] = record.toDatagram();
+            } else {
+                // Choose a uniform random slot in [0, eligibleCount] inclusive.
+                // If it falls inside the reservoir, replace that slot.
+                long j = ThreadLocalRandom.current().nextLong(eligibleCount + 1L);
+                if (j < reservoirSize) {
+                    reservoir[(int) j] = record.toDatagram();
+                }
             }
-            if (record.getLatitude() == null || record.getLongitude() == null) {
-                return;
-            }
-            Long currentCount = candidateCountByBusId.get(record.getBusId());
-            long nextCount = currentCount == null ? 1L : currentCount.longValue() + 1L;
-            candidateCountByBusId.put(record.getBusId(), Long.valueOf(nextCount));
-            if (nextCount % sampleStep != 0L) {
-                return;
-            }
-
-            sample.add(record.toDatagram());
-            if (sample.size() > maxSampleSize) {
-                sampleStep = sampleStep * 2;
-                compactSample();
-            }
+            eligibleCount++;
         }
 
         private List<Datagram> snapshot() {
-            return new ArrayList<Datagram>(sample);
-        }
-
-        private void compactSample() {
-            if (sample.isEmpty()) {
-                return;
+            int count = (int) Math.min(eligibleCount, (long) reservoirSize);
+            List<Datagram> result = new ArrayList<Datagram>(count);
+            for (int i = 0; i < count; i++) {
+                result.add(reservoir[i]);
             }
-            List<Datagram> compacted = new ArrayList<Datagram>();
-            for (int i = 0; i < sample.size(); i += 2) {
-                compacted.add(sample.get(i));
-            }
-            Datagram last = sample.get(sample.size() - 1);
-            if (compacted.isEmpty() || compacted.get(compacted.size() - 1) != last) {
-                compacted.add(last);
-            }
-            sample.clear();
-            sample.addAll(compacted);
+            return result;
         }
     }
 }

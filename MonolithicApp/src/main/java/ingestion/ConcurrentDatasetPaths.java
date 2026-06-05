@@ -33,7 +33,7 @@ public final class ConcurrentDatasetPaths {
      *
      * Para cambiar el datagrama, cambia SOLO esta línea:
      */
-    public static final String ACTIVE_DATAGRAMS_FILE = DATAGRAMS_3GB_FILE;
+    public static final String ACTIVE_DATAGRAMS_FILE = DATAGRAMS_MINI_PILOT_FILE;
 
     private ConcurrentDatasetPaths() {
     }

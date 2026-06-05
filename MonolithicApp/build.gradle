@@ -14,6 +14,17 @@ application {
 }
 
 javafx {
-    version = '17.0.2'
+    version = '21.0.6'
     modules = ['javafx.controls', 'javafx.web', 'javafx.fxml', 'javafx.swing']
+}
+
+task runV2(type: JavaExec) {
+    mainClass = 'app.ConcurrentBatchMain'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir = rootProject.projectDir
+    jvmArgs = ['-Xmx1g']
+    def dgrams = project.hasProperty('datagrams') ? project.datagrams : 'datasets/mini/datagrams-MiniPilot.csv'
+    def lns    = project.hasProperty('lines')     ? project.lines     : 'datasets/mini/lines-241-ActiveGT.csv'
+    def outF   = project.hasProperty('out')       ? project.out       : 'output/speed-results-v2.csv'
+    args = [dgrams, lns, outF]
 }

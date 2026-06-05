@@ -1,7 +1,7 @@
 package processing.streaming;
 
 public final class BucketProcessingConfig {
-    public static final int DEFAULT_VISUAL_SAMPLE_LIMIT = 20000;
+    public static final int DEFAULT_VISUAL_SAMPLE_LIMIT = 3000;
 
     private final int parallelism;
     private final int bucketCount;

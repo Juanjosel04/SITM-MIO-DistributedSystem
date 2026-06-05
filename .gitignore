@@ -32,3 +32,11 @@ datasets/medium/
 datasets/mini/bloque_*.csv
 datasets/mini/*gb*.csv
 datasets/mini/datagrams-*.csv
+
+datasets/mini/bloque_*.csv
+datasets/mini/datagrams-MiniPilot.csv
+datasets/mini/chunck.csv
+output/
+build/
+.gradle/
+.metals/
