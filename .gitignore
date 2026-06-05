@@ -1,0 +1,34 @@
+﻿# Gradle
+.gradle/
+build/
+**/build/
+
+# Java compiled output
+bin/
+**/bin/
+*.class
+
+# Generated archives / build artifacts
+*.jar
+*.war
+*.ear
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+hs_err_pid*.log
+
+# Local datasets
+datasets/medium/
+datasets/mini/bloque_3gb.csv
+datasets/mini/datagrams-MiniPilot.csv
