@@ -2,6 +2,7 @@ package master.map;
 
 public final class MapPlaybackPoint {
     private final String busId;
+    private final String visualBusKey;
     private final String routeId;
     private final String timestamp;
     private final double latitude;
@@ -10,7 +11,13 @@ public final class MapPlaybackPoint {
 
     public MapPlaybackPoint(String busId, String routeId, String timestamp, double latitude, double longitude,
                             long sequence) {
+        this(busId, busId, routeId, timestamp, latitude, longitude, sequence);
+    }
+
+    public MapPlaybackPoint(String busId, String visualBusKey, String routeId, String timestamp, double latitude,
+                            double longitude, long sequence) {
         this.busId = busId == null ? "" : busId.trim();
+        this.visualBusKey = visualBusKey == null || visualBusKey.trim().isEmpty() ? this.busId : visualBusKey.trim();
         this.routeId = routeId == null ? "" : routeId.trim();
         this.timestamp = timestamp == null ? "" : timestamp.trim();
         this.latitude = latitude;
@@ -20,6 +27,10 @@ public final class MapPlaybackPoint {
 
     public String getBusId() {
         return busId;
+    }
+
+    public String getVisualBusKey() {
+        return visualBusKey;
     }
 
     public String getRouteId() {

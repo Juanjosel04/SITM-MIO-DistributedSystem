@@ -2,77 +2,41 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>SITM-MIO Distributed Map</title>
+    <title>SITM-MIO Monitoring</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script>window.L_DISABLE_3D = true;</script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        html, body, #map, #fallbackCanvas {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            overflow: hidden;
-            background: #e8f1f8;
-            font-family: Arial, sans-serif;
-        }
-        #map {
-            position: absolute;
-            inset: 0;
-        }
-        #fallbackCanvas {
-            display: none;
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, #eef7fb 0%, #d8e8f0 50%, #c9dde8 100%);
-        }
-        .hud {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            z-index: 2000;
-            padding: 9px 12px;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.92);
-            border: 1px solid rgba(148, 163, 184, 0.55);
-            color: #0f172a;
-            font-size: 12px;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.15);
-        }
-        .hud b {
-            color: #0f766e;
-        }
+        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+        body { overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <canvas id="fallbackCanvas"></canvas>
-    <div class="hud">
-        <div><b>SITM-MIO</b> distributed playback</div>
-        <div id="status">Initializing map...</div>
-        <div id="counter">0 / 0 points</div>
-    </div>
     <script>
+        var MAP_HTML_VERSION = "V3_EXACT_V2_VISUAL_COPY_20260606";
         var CALI_CENTER = [3.4516, -76.5320];
         var CALI_ZOOM = 12;
+        var BATCH_SIZE = 80;
         var map = null;
         var markers = {};
+        var allPoints = [];
         var playbackPoints = [];
-        var fallbackMarkers = {};
-        var currentRouteFilter = '__ALL__';
+        var routeFilter = "__ALL__";
+        var playbackIndex = 0;
         window.__busMarkers = window.__busMarkers || {};
 
         function initializeMap() {
-            if (map || typeof L === 'undefined') {
-                if (typeof L === 'undefined') {
-                    useFallbackCanvas();
-                }
+            window.__MAP_HTML_VERSION = MAP_HTML_VERSION;
+            if (document && document.body) {
+                document.body.setAttribute("data-map-version", MAP_HTML_VERSION);
+            }
+            console.log("MAP_HTML_VERSION=" + MAP_HTML_VERSION);
+            if (map || typeof L === "undefined") {
                 return;
             }
 
-            map = L.map('map', {
+            map = L.map("map", {
                 zoomControl: true,
                 preferCanvas: true,
                 zoomAnimation: false,
@@ -81,34 +45,21 @@
             }).setView(CALI_CENTER, CALI_ZOOM);
             window.__map = map;
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution: "&copy; OpenStreetMap contributors"
             }).addTo(map);
 
-            setStatus('Leaflet map ready');
             fixMapSize();
         }
 
-        function useFallbackCanvas() {
-            document.getElementById('map').style.display = 'none';
-            var canvas = document.getElementById('fallbackCanvas');
-            canvas.style.display = 'block';
-            resizeCanvas();
-            drawFallbackBase();
-            setStatus('Offline canvas map ready');
-        }
-
         function isSitmMapReady() {
-            return !!map || document.getElementById('fallbackCanvas').style.display === 'block';
+            return !!map;
         }
 
         function fixMapSize() {
             if (window.__map) {
                 window.__map.invalidateSize(false);
             }
-            resizeCanvas();
-            drawFallbackBase();
-            redrawFallbackMarkers();
         }
 
         function refreshMapSize() {
@@ -124,257 +75,321 @@
 
         function loadPoints(pointsJson) {
             try {
-                playbackPoints = typeof pointsJson === 'string' ? JSON.parse(pointsJson || '[]') : (pointsJson || []);
-                setStatus('Loaded visual sample');
-                filterRoute(currentRouteFilter || '__ALL__');
-                if (!map && typeof L === 'undefined') {
-                    useFallbackCanvas();
+                var rawPoints = typeof pointsJson === "string" ? JSON.parse(pointsJson || "[]") : (pointsJson || []);
+                allPoints = normalizePoints(rawPoints);
+                sortPlaybackPoints(allPoints);
+                applyRouteFilter();
+                clearMovingMarkers();
+                playbackIndex = 0;
+                console.log("MAP_HTML_VERSION=" + MAP_HTML_VERSION);
+                console.log("Map sample total points=" + allPoints.length);
+                console.log("Map sample unique routes=" + uniqueRoutes(allPoints).length);
+                if (allPoints.length > 0) {
+                    var first = allPoints[0];
+                    console.log("First point=visualBusKey=" + first.visualBusKey
+                            + ", processingBusId=" + first.processingBusId + ", routeId=" + first.routeId
+                            + ", lat=" + first.latitude + ", lon=" + first.longitude
+                            + ", timestamp=" + first.timestamp);
                 }
             } catch (error) {
+                allPoints = [];
                 playbackPoints = [];
-                setStatus('Could not load visual sample');
+                playbackIndex = 0;
+                clearMovingMarkers();
+                console.log("Map loadPoints error=" + error);
             }
         }
 
+        function applyRouteFilter() {
+            playbackPoints = [];
+            for (var i = 0; i < allPoints.length; i++) {
+                if (isRouteVisible(allPoints[i])) {
+                    playbackPoints.push(allPoints[i]);
+                }
+            }
+            sortPlaybackPoints(playbackPoints);
+        }
+
+        function filterRoute(routeId) {
+            routeFilter = (!routeId || routeId === "__ALL__" || routeId === "Todas las rutas") ? "__ALL__" : String(routeId);
+            clearMovingMarkers();
+            playbackIndex = 0;
+            applyRouteFilter();
+            console.log("Current route filter=" + routeFilter);
+            console.log("Playback points after filter=" + playbackPoints.length);
+            return true;
+        }
+
+        function updateBus(busId, lat, lng, lineId, time) {
+            if (!map || typeof L === "undefined") {
+                return false;
+            }
+
+            if (markers[busId]) {
+                markers[busId].setLatLng([lat, lng]);
+                markers[busId].setPopupContent("<b>Bus:</b> " + busId + "<br><b>Ruta:</b> " + lineId + "<br><b>Hora:</b> " + time);
+            } else {
+                var marker = L.marker([lat, lng]).addTo(map);
+                marker.bindPopup("<b>Bus:</b> " + busId + "<br><b>Ruta:</b> " + lineId + "<br><b>Hora:</b> " + time);
+                markers[busId] = marker;
+            }
+            return true;
+        }
+
+        function updateMovingMarkers(markersJson) {
+            if (!window.__map || typeof L === "undefined") {
+                return false;
+            }
+
+            var updates = typeof markersJson === "string" ? JSON.parse(markersJson || "[]") : (markersJson || []);
+            updates.forEach(function (rawMarker) {
+                var m = normalizePoint(rawMarker);
+                if (!m || !isRouteVisible(m)) {
+                    return;
+                }
+                var markerKey = m.visualBusKey;
+                var latlng = [m.latitude, m.longitude];
+                var marker = window.__busMarkers[markerKey];
+                var markerColor = colorForRoute(m.routeId);
+                if (!marker) {
+                    marker = L.circleMarker(latlng, {
+                        radius: 6,
+                        color: markerColor,
+                        weight: 2,
+                        fillColor: markerColor,
+                        fillOpacity: 0.85,
+                        interactive: true
+                    }).addTo(window.__map);
+                    window.__busMarkers[markerKey] = marker;
+                } else {
+                    marker.setLatLng(latlng);
+                    marker.setStyle({
+                        color: markerColor,
+                        fillColor: markerColor
+                    });
+                }
+                marker.bindPopup(formatPopup(m));
+            });
+            return true;
+        }
+
+        function clearMovingMarkers() {
+            if (!window.__map) {
+                return;
+            }
+            Object.keys(window.__busMarkers).forEach(function (busId) {
+                window.__map.removeLayer(window.__busMarkers[busId]);
+            });
+            window.__busMarkers = {};
+        }
+
         function setPlaybackState(message) {
-            setStatus(message);
+            console.log("Playback state=" + (message || ""));
         }
 
         function setPlaybackProgress(index, total) {
-            document.getElementById('counter').innerText = String(index || 0) + ' / ' + String(total || 0) + ' points';
+            playbackIndex = typeof index === "number" ? index : playbackIndex;
+            console.log("Playback progress=" + String(playbackIndex || 0) + "/" + String(total || playbackPoints.length || 0));
         }
 
         function resetPlayback() {
             clearMovingMarkers();
-            setPlaybackProgress(0, filteredPoints().length);
-            setStatus('Playback reset');
+            playbackIndex = 0;
+            return true;
         }
 
         function play() {
-            setStatus('Ready to play filtered sample');
             return true;
         }
 
         function pause() {
-            setStatus('Paused');
             return true;
         }
 
         function reset() {
-            resetPlayback();
-            return true;
+            return resetPlayback();
         }
 
         function clearMap() {
             clearMovingMarkers();
+            allPoints = [];
+            playbackPoints = [];
+            playbackIndex = 0;
             return true;
         }
 
-        function filterRoute(routeId) {
-            currentRouteFilter = (!routeId || routeId === '__ALL__' || routeId === 'Todas las rutas') ? '__ALL__' : String(routeId);
-            clearMovingMarkers();
-            var total = filteredPoints().length;
-            setPlaybackProgress(0, total);
-            if (currentRouteFilter === '__ALL__') {
-                setStatus('Showing all routes');
-            } else {
-                setStatus('Showing route ' + currentRouteFilter);
+        function normalizePoints(points) {
+            var normalized = [];
+            if (!points) {
+                return normalized;
             }
-            return true;
-        }
-
-        function filteredPoints() {
-            if (currentRouteFilter === '__ALL__') {
-                return playbackPoints;
-            }
-            var filtered = [];
-            for (var i = 0; i < playbackPoints.length; i++) {
-                var point = playbackPoints[i];
-                if (String(point.routeId || point.routeLabel || '') === currentRouteFilter) {
-                    filtered.push(point);
+            for (var i = 0; i < points.length; i++) {
+                var point = normalizePoint(points[i]);
+                if (point) {
+                    normalized.push(point);
                 }
             }
-            return filtered;
+            return normalized;
         }
 
-        function updateBus(busId, lat, lng, lineId, time) {
-            return updateMovingMarkers(JSON.stringify([{
-                busId: busId,
-                latitude: lat,
-                longitude: lng,
-                routeLabel: lineId,
-                popupText: '<b>Bus:</b> ' + busId + '<br><b>Ruta:</b> ' + lineId + '<br><b>Hora:</b> ' + time
-            }]));
-        }
-
-        function updateMovingMarkers(markersJson) {
-            var updates = typeof markersJson === 'string' ? JSON.parse(markersJson || '[]') : (markersJson || []);
-            if (map && typeof L !== 'undefined') {
-                for (var i = 0; i < updates.length; i++) {
-                    if (isRouteVisible(updates[i])) {
-                        updateLeafletMarker(updates[i]);
-                    }
-                }
-            } else {
-                useFallbackCanvas();
-                for (var j = 0; j < updates.length; j++) {
-                    if (isRouteVisible(updates[j])) {
-                        updateFallbackMarker(updates[j]);
-                    }
-                }
-                redrawFallbackMarkers();
+        function normalizePoint(point) {
+            if (!point) {
+                return null;
             }
-            return true;
-        }
-
-        function isRouteVisible(point) {
-            if (currentRouteFilter === '__ALL__') {
-                return true;
+            var lat = Number(point.latitude);
+            var lon = Number(point.longitude);
+            var route = String(point.routeId || point.routeLabel || "").trim();
+            var processingBusId = String(point.processingBusId || point.busId || "").trim();
+            var visualBusKey = String(point.visualBusKey || point.busCode || point.busId || "").trim();
+            if (!visualBusKey || !processingBusId || !route || route === "-1" || !isFinite(lat) || !isFinite(lon)) {
+                return null;
             }
-            return point && String(point.routeId || point.routeLabel || '') === currentRouteFilter;
-        }
-
-        function updateLeafletMarker(m) {
-            if (!m || !m.busId) {
-                return;
-            }
-            var latlng = [m.latitude, m.longitude];
-            var marker = window.__busMarkers[m.busId];
-            if (!marker) {
-                marker = L.circleMarker(latlng, {
-                    radius: 6,
-                    color: colorForRoute(m.routeLabel || m.routeId),
-                    weight: 2,
-                    fillColor: colorForRoute(m.routeLabel || m.routeId),
-                    fillOpacity: 0.88
-                }).addTo(window.__map);
-                window.__busMarkers[m.busId] = marker;
-            } else {
-                marker.setLatLng(latlng);
-                marker.setStyle({
-                    color: colorForRoute(m.routeLabel || m.routeId),
-                    fillColor: colorForRoute(m.routeLabel || m.routeId)
-                });
-            }
-            marker.bindPopup(m.popupText || '');
-        }
-
-        function updateFallbackMarker(m) {
-            if (!m || !m.busId) {
-                return;
-            }
-            fallbackMarkers[m.busId] = m;
-        }
-
-        function clearMovingMarkers() {
-            if (window.__map) {
-                var ids = Object.keys(window.__busMarkers);
-                for (var i = 0; i < ids.length; i++) {
-                    window.__map.removeLayer(window.__busMarkers[ids[i]]);
-                }
-            }
-            window.__busMarkers = {};
-            fallbackMarkers = {};
-            drawFallbackBase();
-        }
-
-        function resizeCanvas() {
-            var canvas = document.getElementById('fallbackCanvas');
-            if (canvas.style.display === 'none') {
-                return;
-            }
-            canvas.width = Math.max(1, canvas.clientWidth);
-            canvas.height = Math.max(1, canvas.clientHeight);
-        }
-
-        function drawFallbackBase() {
-            var canvas = document.getElementById('fallbackCanvas');
-            if (canvas.style.display === 'none') {
-                return;
-            }
-            var ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#e7f0f7';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = 'rgba(15, 118, 110, 0.16)';
-            ctx.lineWidth = 2;
-            for (var i = -canvas.height; i < canvas.width; i += 52) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i + canvas.height, canvas.height);
-                ctx.stroke();
-            }
-            ctx.strokeStyle = 'rgba(30, 64, 175, 0.18)';
-            for (var j = 35; j < canvas.height; j += 70) {
-                ctx.beginPath();
-                ctx.moveTo(0, j);
-                ctx.bezierCurveTo(canvas.width * 0.28, j - 35, canvas.width * 0.72, j + 35, canvas.width, j);
-                ctx.stroke();
-            }
-        }
-
-        function redrawFallbackMarkers() {
-            drawFallbackBase();
-            var ids = Object.keys(fallbackMarkers);
-            for (var i = 0; i < ids.length; i++) {
-                drawFallbackMarker(fallbackMarkers[ids[i]]);
-            }
-        }
-
-        function drawFallbackMarker(m) {
-            var canvas = document.getElementById('fallbackCanvas');
-            if (canvas.style.display === 'none') {
-                return;
-            }
-            var ctx = canvas.getContext('2d');
-            var projected = project(m.latitude, m.longitude);
-            ctx.beginPath();
-            ctx.arc(projected.x, projected.y, 7, 0, Math.PI * 2);
-            ctx.fillStyle = colorForRoute(m.routeLabel || m.routeId);
-            ctx.fill();
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = '#0f172a';
-            ctx.stroke();
-            ctx.fillStyle = '#0f172a';
-            ctx.font = '11px Arial';
-            ctx.fillText(m.busId, projected.x + 9, projected.y - 8);
-        }
-
-        function project(latitude, longitude) {
-            var canvas = document.getElementById('fallbackCanvas');
-            var lngMin = -76.62;
-            var lngMax = -76.45;
-            var latMin = 3.36;
-            var latMax = 3.54;
-            var x = (longitude - lngMin) / (lngMax - lngMin) * canvas.width;
-            var y = canvas.height - ((latitude - latMin) / (latMax - latMin) * canvas.height);
             return {
-                x: Math.max(12, Math.min(canvas.width - 12, x)),
-                y: Math.max(12, Math.min(canvas.height - 12, y))
+                busId: processingBusId,
+                processingBusId: processingBusId,
+                visualBusKey: visualBusKey,
+                routeId: route,
+                routeLabel: String(point.routeLabel || route).trim(),
+                timestamp: String(point.timestamp || "").trim(),
+                sequence: Number(point.sequence || 0),
+                latitude: lat,
+                longitude: lon,
+                averageSpeedText: String(point.averageSpeedText || point.averageSpeed || point.speedKmh || "").trim(),
+                popupText: point.popupText || ""
             };
         }
 
+        function sortPlaybackPoints(points) {
+            points.sort(function (left, right) {
+                var leftSequence = Number(left.sequence || 0);
+                var rightSequence = Number(right.sequence || 0);
+                if (leftSequence !== rightSequence) {
+                    return leftSequence - rightSequence;
+                }
+                return String(left.timestamp || "").localeCompare(String(right.timestamp || ""));
+            });
+        }
+
+        function isRouteVisible(point) {
+            if (routeFilter === "__ALL__") {
+                return true;
+            }
+            return point && String(point.routeId || point.routeLabel || "").trim() === routeFilter;
+        }
+
+        function formatPopup(point) {
+            if (point.popupText) {
+                return point.popupText;
+            }
+            var average = point.averageSpeedText || "No disponible";
+            return "<b>Bus:</b> " + escapeHtml(point.visualBusKey)
+                    + "<br><b>Ruta:</b> " + escapeHtml(point.routeLabel || point.routeId)
+                    + "<br><b>Velocidad promedio:</b> " + escapeHtml(average)
+                    + "<br><b>Hora:</b> " + escapeHtml(point.timestamp || "No disponible");
+        }
+
+        function uniqueRoutes(points) {
+            var seen = {};
+            var routes = [];
+            for (var i = 0; i < points.length; i++) {
+                var route = String(points[i].routeId || "").trim();
+                if (route && !seen[route]) {
+                    seen[route] = true;
+                    routes.push(route);
+                }
+            }
+            routes.sort();
+            return routes;
+        }
+
+        function uniqueVisualBusKeys(points) {
+            var seen = {};
+            var buses = [];
+            for (var i = 0; i < points.length; i++) {
+                var bus = String(points[i].visualBusKey || "").trim();
+                if (bus && !seen[bus]) {
+                    seen[bus] = true;
+                    buses.push(bus);
+                }
+            }
+            buses.sort();
+            return buses;
+        }
+
+        function uniqueProcessingBusIds(points) {
+            var seen = {};
+            var buses = [];
+            for (var i = 0; i < points.length; i++) {
+                var bus = String(points[i].processingBusId || points[i].busId || "").trim();
+                if (bus && !seen[bus]) {
+                    seen[bus] = true;
+                    buses.push(bus);
+                }
+            }
+            buses.sort();
+            return buses;
+        }
+
         function colorForRoute(route) {
-            var text = String(route || 'default');
+            var text = String(route || "default");
             var hash = 0;
             for (var i = 0; i < text.length; i++) {
                 hash = ((hash << 5) - hash) + text.charCodeAt(i);
                 hash = hash & hash;
             }
-            var colors = ['#14b8a6', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed', '#059669', '#db2777'];
+            var colors = ["#14b8a6", "#2563eb", "#f59e0b", "#dc2626", "#7c3aed", "#059669", "#db2777"];
             return colors[Math.abs(hash) % colors.length];
         }
 
-        function setStatus(message) {
-            document.getElementById('status').innerText = message || '';
+        function getMapAuditState() {
+            return {
+                version: MAP_HTML_VERSION,
+                totalPointsLoaded: allPoints.length,
+                playbackPoints: playbackPoints.length,
+                uniqueBusIds: uniqueVisualBusKeys(playbackPoints).length,
+                uniqueVisualBusKeys: uniqueVisualBusKeys(playbackPoints).length,
+                uniqueProcessingBusIds: uniqueProcessingBusIds(playbackPoints).length,
+                uniqueRouteIds: uniqueRoutes(playbackPoints).length,
+                activeMarkers: Object.keys(window.__busMarkers || {}).length,
+                playbackIndex: playbackIndex,
+                activeTimers: 0,
+                batchSize: BATCH_SIZE,
+                routeFilter: routeFilter,
+                canvasExists: !!document.querySelector("canvas"),
+                overlayExists: false,
+                popupBound: hasBoundPopup()
+            };
         }
 
-        window.addEventListener('resize', fixMapSize);
-        setTimeout(function () {
-            if (!map && typeof L === 'undefined') {
-                useFallbackCanvas();
+        function hasBoundPopup() {
+            var keys = Object.keys(window.__busMarkers || {});
+            for (var i = 0; i < keys.length; i++) {
+                var marker = window.__busMarkers[keys[i]];
+                if (marker && (marker.getPopup || marker._popup)) {
+                    return true;
+                }
             }
-        }, 800);
+            return false;
+        }
+
+        function escapeHtml(value) {
+            return String(value || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+        }
+
+        window.addEventListener("resize", fixMapSize);
+        (function () {
+            var el = document.getElementById("map");
+            if (window.ResizeObserver && el) {
+                new ResizeObserver(function () {
+                    fixMapSize();
+                }).observe(el);
+            }
+        })();
         initializeMap();
         setTimeout(fixMapSize, 200);
     </script>

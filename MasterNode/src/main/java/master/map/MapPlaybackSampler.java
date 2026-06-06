@@ -4,17 +4,22 @@ import master.ingestion.CompactDatagramRecord;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class MapPlaybackSampler {
     public static final int DEFAULT_MAX_VISUAL_POINTS = 5000;
     public static final int MAX_POINTS_PER_TICK = 80;
     public static final int PLAYBACK_INTERVAL_MS = 180;
+    private static final double COORDINATE_SCALE = 10000000.0;
+    private static final int INITIAL_SAMPLE_STEP = 10;
 
     private final int maxVisualPoints;
     private final List<MapPlaybackPoint> points = new ArrayList<MapPlaybackPoint>();
+    private final Map<String, Long> candidateCountByVisualBusKey = new HashMap<String, Long>();
     private long totalSeen;
-    private int sampleStep = 1;
+    private int sampleStep = INITIAL_SAMPLE_STEP;
 
     public MapPlaybackSampler() {
         this(readMaxVisualPoints());
@@ -26,7 +31,15 @@ public final class MapPlaybackSampler {
 
     public void offer(CompactDatagramRecord record, long sequence) {
         totalSeen++;
-        if (record == null || totalSeen % sampleStep != 0L) {
+        if (record == null) {
+            return;
+        }
+        String visualBusKey = record.getVisualBusKey() == null ? "" : record.getVisualBusKey().trim();
+        if (visualBusKey.isEmpty()) {
+            return;
+        }
+        long busCandidateCount = nextBusCandidateCount(visualBusKey);
+        if (busCandidateCount % sampleStep != 0L) {
             return;
         }
         MapPlaybackPoint point = toPoint(record, sequence);
@@ -62,13 +75,59 @@ public final class MapPlaybackSampler {
 
     private MapPlaybackPoint toPoint(CompactDatagramRecord record, long sequence) {
         try {
-            double latitude = Double.parseDouble(record.getLatitude());
-            double longitude = Double.parseDouble(record.getLongitude());
-            return new MapPlaybackPoint(record.getBusId(), record.getRouteId(), record.getTimestamp(),
-                    latitude, longitude, sequence);
+            if (record.getBusId() == null || record.getBusId().trim().isEmpty()) {
+                return null;
+            }
+            if (record.getVisualBusKey() == null || record.getVisualBusKey().trim().isEmpty()) {
+                return null;
+            }
+            if (record.getRouteId() == null || record.getRouteId().trim().isEmpty()
+                    || "-1".equals(record.getRouteId().trim())) {
+                return null;
+            }
+            Double latitude = normalizeLatitude(record.getLatitude());
+            Double longitude = normalizeLongitude(record.getLongitude());
+            if (latitude == null || longitude == null) {
+                return null;
+            }
+            return new MapPlaybackPoint(record.getBusId(), record.getVisualBusKey(), record.getRouteId(), record.getTimestamp(),
+                    latitude.doubleValue(), longitude.doubleValue(), sequence);
         } catch (RuntimeException exception) {
             return null;
         }
+    }
+
+    private Double normalizeLatitude(String value) {
+        Double coordinate = parseCoordinate(value);
+        if (coordinate == null || coordinate.doubleValue() < -90.0 || coordinate.doubleValue() > 90.0) {
+            return null;
+        }
+        return coordinate;
+    }
+
+    private Double normalizeLongitude(String value) {
+        Double coordinate = parseCoordinate(value);
+        if (coordinate == null || coordinate.doubleValue() < -180.0 || coordinate.doubleValue() > 180.0) {
+            return null;
+        }
+        return coordinate;
+    }
+
+    private Double parseCoordinate(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        double coordinate = Double.parseDouble(value.trim());
+        if (coordinate == -1.0 || Double.isNaN(coordinate) || Double.isInfinite(coordinate)) {
+            return null;
+        }
+        if (Math.abs(coordinate) > 180.0) {
+            coordinate = coordinate / COORDINATE_SCALE;
+        }
+        if (Double.isNaN(coordinate) || Double.isInfinite(coordinate)) {
+            return null;
+        }
+        return Double.valueOf(coordinate);
     }
 
     private void compact() {
@@ -79,12 +138,15 @@ public final class MapPlaybackSampler {
         for (int index = 0; index < points.size(); index += 2) {
             compacted.add(points.get(index));
         }
-        MapPlaybackPoint last = points.get(points.size() - 1);
-        if (compacted.isEmpty() || compacted.get(compacted.size() - 1) != last) {
-            compacted.add(last);
-        }
         points.clear();
         points.addAll(compacted);
+    }
+
+    private long nextBusCandidateCount(String visualBusKey) {
+        Long current = candidateCountByVisualBusKey.get(visualBusKey);
+        long next = current == null ? 1L : current.longValue() + 1L;
+        candidateCountByVisualBusKey.put(visualBusKey, Long.valueOf(next));
+        return next;
     }
 
     private static int readMaxVisualPoints() {

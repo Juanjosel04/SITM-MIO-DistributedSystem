@@ -36,7 +36,9 @@ public final class RemoteProcessingService {
         int rows = 0;
         for (WorkerConnectionResult worker : workers) {
             try {
-                notifyWorker(progress, worker, "Requesting remote bucket processing.");
+                notifyWorker(progress, worker, "Calling processReceivedBuckets on worker="
+                        + worker.getLogicalName() + ", workerId=" + worker.getWorkerId()
+                        + ", jobId=" + distribution.getJobId() + ".");
                 PartialProcessingResult dto = iceClient.processReceivedBuckets(worker, distribution.getJobId());
                 RemoteWorkerPartialResult result = RemoteWorkerPartialResult.fromDto(worker.getLogicalName(), dto);
                 results.add(result);
@@ -51,7 +53,8 @@ public final class RemoteProcessingService {
                 failed++;
                 RemoteWorkerPartialResult result = RemoteWorkerPartialResult.failure(worker.getLogicalName(),
                         worker.getWorkerId(), distribution.getJobId(),
-                        "Remote processing failed: " + exception.getMessage());
+                        "Remote processing failed for jobId=" + distribution.getJobId()
+                                + " on worker=" + worker.getLogicalName() + ": " + exception.getMessage());
                 results.add(result);
                 notifyResult(progress, result);
             }

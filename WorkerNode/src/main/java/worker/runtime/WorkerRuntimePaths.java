@@ -4,9 +4,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 public final class WorkerRuntimePaths {
     public static final String DEFAULT_WORKER_ID = "worker-local";
+    private static final int DEFAULT_MAX_RECEIVED_JOBS_TO_KEEP = 2;
 
     private final String workerId;
     private final String safeWorkerId;
@@ -54,12 +58,98 @@ public final class WorkerRuntimePaths {
 
     public void ensureDirectories() {
         try {
-            Files.createDirectories(receivedBucketsDirectory());
-            Files.createDirectories(demoBucketsDirectory());
-            Files.createDirectories(logsDirectory());
+            createRuntimeDirectories();
+            cleanupOldReceivedJobs();
         } catch (IOException exception) {
             throw new IllegalStateException("Could not create worker runtime directories under "
                     + baseDirectory + ": " + exception.getMessage(), exception);
+        }
+    }
+
+    public void ensureDirectoriesWithoutCleanup() {
+        try {
+            createRuntimeDirectories();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not create worker runtime directories under "
+                    + baseDirectory + ": " + exception.getMessage(), exception);
+        }
+    }
+
+    private void createRuntimeDirectories() throws IOException {
+        Files.createDirectories(receivedBucketsDirectory());
+        Files.createDirectories(demoBucketsDirectory());
+        Files.createDirectories(logsDirectory());
+    }
+
+    private void cleanupOldReceivedJobs() throws IOException {
+        Path root = receivedBucketsDirectory();
+        if (!Files.exists(root)) {
+            return;
+        }
+        List<Path> jobs = new ArrayList<Path>();
+        java.util.stream.Stream<Path> stream = Files.list(root);
+        try {
+            stream.filter(Files::isDirectory).forEach(jobs::add);
+        } finally {
+            stream.close();
+        }
+        if (jobs.size() <= maxReceivedJobsToKeep()) {
+            return;
+        }
+        jobs.sort(new Comparator<Path>() {
+            @Override
+            public int compare(Path left, Path right) {
+                try {
+                    return Files.getLastModifiedTime(right).compareTo(Files.getLastModifiedTime(left));
+                } catch (IOException exception) {
+                    return right.toString().compareTo(left.toString());
+                }
+            }
+        });
+        for (int index = maxReceivedJobsToKeep(); index < jobs.size(); index++) {
+            deleteRecursivelyQuietly(jobs.get(index));
+        }
+    }
+
+    private int maxReceivedJobsToKeep() {
+        String value = System.getProperty("sitm.worker.received.jobs.keep",
+                String.valueOf(DEFAULT_MAX_RECEIVED_JOBS_TO_KEEP));
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed < 0 ? DEFAULT_MAX_RECEIVED_JOBS_TO_KEEP : parsed;
+        } catch (RuntimeException exception) {
+            return DEFAULT_MAX_RECEIVED_JOBS_TO_KEEP;
+        }
+    }
+
+    private void deleteRecursivelyQuietly(Path directory) {
+        if (directory == null || !Files.exists(directory)) {
+            return;
+        }
+        java.util.stream.Stream<Path> stream = null;
+        try {
+            stream = Files.walk(directory);
+            List<Path> paths = new ArrayList<Path>();
+            stream.forEach(paths::add);
+            paths.sort(new Comparator<Path>() {
+                @Override
+                public int compare(Path left, Path right) {
+                    return right.getNameCount() - left.getNameCount();
+                }
+            });
+            for (Path path : paths) {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignored) {
+                    // Best-effort cleanup; runtime startup should not fail because an old file is locked.
+                }
+            }
+        } catch (IOException ignored) {
+            // Best-effort cleanup; runtime startup should not fail because an old file is locked.
+        } finally {
+            if (stream != null) {
+                stream.close();
+            }
         }
     }
 

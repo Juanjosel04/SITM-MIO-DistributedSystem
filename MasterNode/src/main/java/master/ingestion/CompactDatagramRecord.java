@@ -4,6 +4,7 @@ public final class CompactDatagramRecord {
     public static final String HEADER = "busId,routeId,odometer,timestamp,latitude,longitude";
 
     private final String busId;
+    private final String visualBusKey;
     private final String routeId;
     private final String odometer;
     private final String timestamp;
@@ -12,7 +13,13 @@ public final class CompactDatagramRecord {
 
     public CompactDatagramRecord(String busId, String routeId, String odometer, String timestamp,
                                  String latitude, String longitude) {
+        this(busId, busId, routeId, odometer, timestamp, latitude, longitude);
+    }
+
+    public CompactDatagramRecord(String busId, String visualBusKey, String routeId, String odometer, String timestamp,
+                                 String latitude, String longitude) {
         this.busId = busId;
+        this.visualBusKey = visualBusKey == null || visualBusKey.trim().isEmpty() ? busId : visualBusKey.trim();
         this.routeId = routeId;
         this.odometer = odometer;
         this.timestamp = timestamp;
@@ -22,6 +29,10 @@ public final class CompactDatagramRecord {
 
     public String getBusId() {
         return busId;
+    }
+
+    public String getVisualBusKey() {
+        return visualBusKey;
     }
 
     public String getRouteId() {

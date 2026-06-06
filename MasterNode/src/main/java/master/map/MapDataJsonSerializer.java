@@ -20,12 +20,14 @@ public final class MapDataJsonSerializer {
     }
 
     private void appendPoint(StringBuilder builder, MapPlaybackPoint point) {
-        String popup = "Bus: " + point.getBusId()
+        String popup = "Bus: " + point.getVisualBusKey()
                 + "<br>Ruta: " + point.getRouteId()
                 + "<br>Fecha: " + point.getTimestamp()
                 + "<br>Secuencia: " + point.getSequence();
         builder.append("{")
                 .append("\"busId\":\"").append(escape(point.getBusId())).append("\",")
+                .append("\"processingBusId\":\"").append(escape(point.getBusId())).append("\",")
+                .append("\"visualBusKey\":\"").append(escape(point.getVisualBusKey())).append("\",")
                 .append("\"routeId\":\"").append(escape(point.getRouteId())).append("\",")
                 .append("\"routeLabel\":\"").append(escape(point.getRouteId())).append("\",")
                 .append("\"timestamp\":\"").append(escape(point.getTimestamp())).append("\",")

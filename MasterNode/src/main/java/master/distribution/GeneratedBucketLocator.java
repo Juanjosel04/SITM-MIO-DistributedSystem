@@ -30,7 +30,7 @@ public final class GeneratedBucketLocator {
     }
 
     private Path latestGeneratedBucketDirectory() throws IOException {
-        Path root = resolveBuildDirectory().resolve("tmp").resolve("generated-buckets");
+        Path root = resolveBucketOutputRoot();
         if (!Files.exists(root)) {
             return null;
         }
@@ -77,5 +77,13 @@ public final class GeneratedBucketLocator {
             return current.resolve("build");
         }
         return current.resolve("MasterNode").resolve("build");
+    }
+
+    private Path resolveBucketOutputRoot() {
+        String configured = System.getProperty("sitm.master.bucket.output.dir");
+        if (configured != null && !configured.trim().isEmpty()) {
+            return Paths.get(configured.trim()).toAbsolutePath().normalize();
+        }
+        return resolveBuildDirectory().resolve("tmp").resolve("generated-buckets");
     }
 }

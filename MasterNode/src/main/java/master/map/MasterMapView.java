@@ -15,6 +15,8 @@ import javafx.util.Duration;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 public final class MasterMapView extends BorderPane {
     private final PauseTransition resizeRefresh = new PauseTransition(Duration.millis(200));
@@ -45,6 +47,7 @@ public final class MasterMapView extends BorderPane {
             playbackPoints.addAll(points);
         }
         playbackIndex = 0;
+        auditPoints("loadPoints", playbackPoints);
         execute("if (typeof loadPoints === 'function') { loadPoints('" + escapeForJavaScript(serializer.toJson(playbackPoints)) + "'); }");
         applyRouteFilterToMap();
     }
@@ -85,6 +88,8 @@ public final class MasterMapView extends BorderPane {
         pause();
         playbackIndex = 0;
         routeFilter = routeId == null || routeId.trim().isEmpty() ? null : routeId.trim();
+        System.out.println("Map route filter=" + (routeFilter == null ? "ALL" : routeFilter)
+                + "; visiblePoints=" + visiblePlaybackPoints().size());
         clearMarkers();
         applyRouteFilterToMap();
     }
@@ -104,6 +109,8 @@ public final class MasterMapView extends BorderPane {
         webEngine.getLoadWorker().stateProperty().addListener((observable, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
                 ready = true;
+                System.out.println("MasterMapView loaded /map/map.html; expected MAP_HTML_VERSION=V3_EXACT_V2_VISUAL_COPY_20260606; resource="
+                        + mapResource);
                 execute("if (typeof initializeMap === 'function') { initializeMap(); }");
                 execute("if (typeof centerOnCali === 'function') { centerOnCali(); }");
                 loadSettleRefresh.playFromStart();
@@ -168,6 +175,48 @@ public final class MasterMapView extends BorderPane {
     private void applyRouteFilterToMap() {
         String value = routeFilter == null ? "__ALL__" : routeFilter;
         execute("if (typeof filterRoute === 'function') { filterRoute('" + escapeForJavaScript(value) + "'); }");
+    }
+
+    private void auditPoints(String phase, List<MapPlaybackPoint> points) {
+        int total = points == null ? 0 : points.size();
+        Set<String> routes = new TreeSet<String>();
+        MapPlaybackPoint first = null;
+        if (points != null) {
+            for (MapPlaybackPoint point : points) {
+                if (first == null) {
+                    first = point;
+                }
+                if (point.getRouteId() != null && !point.getRouteId().trim().isEmpty()) {
+                    routes.add(point.getRouteId().trim());
+                }
+            }
+        }
+        System.out.println("Map audit phase=" + phase + "; Points sent to WebView=" + total
+                + "; uniqueRoutes=" + routes.size() + "; firstRoutes=" + firstRoutes(routes));
+        if (first != null) {
+            System.out.println("Map audit firstPoint=visualBusKey=" + first.getVisualBusKey()
+                    + ", processingBusId=" + first.getBusId()
+                    + ", routeId=" + first.getRouteId()
+                    + ", lat=" + first.getLatitude()
+                    + ", lon=" + first.getLongitude()
+                    + ", timestamp=" + first.getTimestamp());
+        }
+    }
+
+    private String firstRoutes(Set<String> routes) {
+        StringBuilder builder = new StringBuilder();
+        int count = 0;
+        for (String route : routes) {
+            if (count > 0) {
+                builder.append(", ");
+            }
+            builder.append(route);
+            count++;
+            if (count >= 10) {
+                break;
+            }
+        }
+        return builder.toString();
     }
 
     private void execute(String script) {

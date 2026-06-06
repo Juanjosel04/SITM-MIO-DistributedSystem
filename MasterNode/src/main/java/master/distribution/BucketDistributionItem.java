@@ -10,6 +10,9 @@ public final class BucketDistributionItem {
     private String assignedWorker;
     private int attempts;
     private String message;
+    private boolean masterBucketDeleted;
+    private long masterBytesDeleted;
+    private String masterDeleteMessage;
 
     public BucketDistributionItem(String bucketId, Path path, long sizeBytes) {
         this.bucketId = bucketId;
@@ -18,6 +21,7 @@ public final class BucketDistributionItem {
         this.status = BucketDistributionStatus.PENDING;
         this.assignedWorker = "";
         this.message = "Queued";
+        this.masterDeleteMessage = "";
     }
 
     public String getBucketId() {
@@ -66,5 +70,29 @@ public final class BucketDistributionItem {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public boolean isMasterBucketDeleted() {
+        return masterBucketDeleted;
+    }
+
+    public long getMasterBytesDeleted() {
+        return masterBytesDeleted;
+    }
+
+    public String getMasterDeleteMessage() {
+        return masterDeleteMessage;
+    }
+
+    public void markMasterBucketDeleted(long bytesDeleted) {
+        this.masterBucketDeleted = true;
+        this.masterBytesDeleted = Math.max(0L, bytesDeleted);
+        this.masterDeleteMessage = "Deleted from Master";
+    }
+
+    public void markMasterBucketRetained(String reason) {
+        this.masterBucketDeleted = false;
+        this.masterBytesDeleted = 0L;
+        this.masterDeleteMessage = reason == null ? "" : reason;
     }
 }

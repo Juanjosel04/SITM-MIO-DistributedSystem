@@ -63,8 +63,10 @@ public final class WorkerServiceImpl implements WorkerService {
     public PartialProcessingResult processReceivedBuckets(String jobId, Current current) {
         notifyRemoteStarted(jobId);
         PartialSpeedResult result = processingService.processReceivedBuckets(jobId);
+        PartialProcessingResult dto = resultMapper.toDto(config.getWorkerId(), jobId, result);
+        processingService.cleanupReceivedJobAfterProcessing(jobId, result);
         notifyRemoteFinished(jobId, result);
-        return resultMapper.toDto(config.getWorkerId(), jobId, result);
+        return dto;
     }
 
     private void notifyRemoteStarted(String jobId) {

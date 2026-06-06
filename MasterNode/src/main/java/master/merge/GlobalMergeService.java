@@ -31,6 +31,9 @@ public final class GlobalMergeService {
                 failedWorkers++;
                 continue;
             }
+            if (workerResult.getRouteMonthResults().isEmpty() || workerResult.getResultCount() <= 0) {
+                continue;
+            }
             mergedWorkers++;
             partialRows += workerResult.getResultCount();
             counters.mergeFrom(workerResult);
@@ -74,7 +77,7 @@ public final class GlobalMergeService {
         } else if (success) {
             message = "Global merge completed.";
         } else {
-            message = "No successful partial results available for merge.";
+            message = "No se recibieron resultados parciales validos.";
         }
         return new GlobalMergeResult(success, safeJob(jobId), message, requested, mergedWorkers, failedWorkers,
                 partialRows, System.currentTimeMillis() - started, counters, rows);

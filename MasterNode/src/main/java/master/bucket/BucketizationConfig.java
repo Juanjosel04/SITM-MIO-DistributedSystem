@@ -40,7 +40,7 @@ public final class BucketizationConfig {
             datagramsPath = resolveConfiguredPath(configuredPath.trim());
             demo = false;
         }
-        Path outputDirectory = resolveBuildDirectory().resolve("tmp").resolve("generated-buckets").resolve(jobId);
+        Path outputDirectory = resolveBucketOutputRoot().resolve(jobId);
         return new BucketizationConfig(jobId, datagramsPath, outputDirectory, bucketCount, demo);
     }
 
@@ -80,6 +80,14 @@ public final class BucketizationConfig {
             return current.resolve("build");
         }
         return current.resolve("MasterNode").resolve("build");
+    }
+
+    private static Path resolveBucketOutputRoot() {
+        String configured = System.getProperty("sitm.master.bucket.output.dir");
+        if (configured != null && !configured.trim().isEmpty()) {
+            return Paths.get(configured.trim()).toAbsolutePath().normalize();
+        }
+        return resolveBuildDirectory().resolve("tmp").resolve("generated-buckets");
     }
 
     private static Path resolveConfiguredPath(String configuredPath) {

@@ -13,10 +13,10 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
-import javafx.scene.control.TitledPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
@@ -40,6 +40,7 @@ import master.results.RemoteProcessingSummary;
 import master.results.RemoteRouteMonthPartial;
 import master.results.RemoteWorkerPartialResult;
 import master.transfer.BucketTransferResult;
+import sitm.ProcessingCountersDto;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +60,9 @@ public class MasterNodeView {
     private final Label bucketsCompleted = new Label("0");
     private final Label failedBuckets = new Label("0");
     private final Label pendingBuckets = new Label("0");
+    private final Label masterBucketsDeleted = new Label("0");
+    private final Label masterBucketsRetained = new Label("0");
+    private final Label storageFreed = new Label("0 B");
     private final Label transferTarget = new Label("none");
     private final Label transferBucket = new Label("none");
     private final Label transferChunks = new Label("0 / 0");
@@ -117,13 +121,10 @@ public class MasterNodeView {
 
     public Parent createContent() {
         BorderPane root = new BorderPane();
-        root.setPadding(new Insets(18));
         root.setStyle("-fx-background-color: #eef3f8;");
 
         root.setTop(createHeader());
-        root.setCenter(createCenterArea());
-        root.setRight(createRightPanel());
-        root.setBottom(createResultsPanel());
+        root.setCenter(createDashboardBody());
 
         appendLog("Master node initialized.");
         appendLog("Waiting for worker registration.");
@@ -134,72 +135,71 @@ public class MasterNodeView {
         scrollPane.setPannable(true);
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scrollPane.setStyle("-fx-background-color: #eef3f8;");
+        scrollPane.setStyle("-fx-background-color: #eef3f8; -fx-background: #eef3f8;");
         return scrollPane;
     }
 
     private Parent createHeader() {
-        Label title = new Label("SITM-MIO Distributed Processing");
-        title.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #182235;");
+        Label title = new Label("SITM-MIO V3 Distribuido - Master");
+        title.setStyle("-fx-font-size: 24px; -fx-font-weight: 700; -fx-text-fill: #18212f;");
 
-        Label subtitle = new Label("Procesamiento distribuido de rutas con workers ICE y mapa visual");
-        subtitle.setStyle("-fx-font-size: 14px; -fx-text-fill: #64748b;");
+        Label subtitle = new Label("Procesamiento distribuido con ICE, buckets y Fork/Join en workers");
+        subtitle.setStyle("-fx-font-size: 13px; -fx-text-fill: #64748b;");
 
-        stateLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #334155;");
+        stateLabel.setStyle("-fx-font-size: 13px; -fx-text-fill: #64748b;");
         stateBadge.setStyle(badgeStyle("#dbeafe", "#1d4ed8"));
 
-        VBox copy = new VBox(5, title, subtitle, stateLabel);
+        VBox copy = new VBox(4, title, subtitle, stateLabel);
         HBox header = new HBox(14, copy, spacer(), stateBadge);
         header.setAlignment(Pos.CENTER_LEFT);
-        header.setPadding(new Insets(0, 0, 16, 0));
+        header.setPadding(new Insets(18, 22, 12, 22));
         return header;
     }
 
-    private Parent createCenterArea() {
-        VBox center = new VBox(14);
-        center.getChildren().addAll(createMapPanel(), createWorkerPanel(), createActivityPanel());
-        VBox.setVgrow(center.getChildren().get(0), Priority.ALWAYS);
-        return center;
+    private Parent createDashboardBody() {
+        VBox body = new VBox(14);
+        body.setPadding(new Insets(0, 22, 22, 22));
+
+        HBox mainArea = new HBox(14);
+        VBox mapArea = new VBox(10, createMapFilters(), mapView);
+        mapView.setPrefHeight(390);
+        mapView.setMinHeight(360);
+        mapView.setMaxHeight(430);
+        HBox.setHgrow(mapArea, Priority.ALWAYS);
+
+        VBox summary = createSummaryCard();
+        summary.setPrefWidth(360);
+        summary.setMinWidth(320);
+        summary.setMaxWidth(420);
+
+        mainArea.getChildren().addAll(mapArea, summary);
+
+        VBox lowerArea = new VBox(10, createResultsPanel(), createCompactLogPanel());
+        VBox.setVgrow(lowerArea, Priority.ALWAYS);
+        body.getChildren().addAll(mainArea, lowerArea);
+        return body;
     }
 
-    private Parent createMapPanel() {
-        Label title = new Label("Distributed Map Playback");
-        title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1f2937;");
-
-        Button play = actionButton("Play Map");
-        play.setOnAction(event -> playMap());
-
-        Button pause = actionButton("Pause Map");
-        pause.setOnAction(event -> pauseMap());
-
-        Button reset = actionButton("Reset Map");
-        reset.setOnAction(event -> resetMap());
-
+    private Parent createMapFilters() {
         routeFilterComboBox.setDisable(true);
-        routeFilterComboBox.setPrefWidth(190);
+        routeFilterComboBox.setPrefWidth(240);
         routeFilterComboBox.setOnAction(event -> applyRouteFilter());
         visualRouteLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #475569;");
 
-        VBox routeFilter = new VBox(4, new Label("Filtro de ruta"), routeFilterComboBox, visualRouteLabel);
+        Label routeLabel = new Label("Ruta");
+        routeLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748b;");
+        VBox routeFilter = new VBox(4, routeLabel, routeFilterComboBox);
         routeFilter.setAlignment(Pos.CENTER_LEFT);
 
-        HBox controls = new HBox(8, play, pause, reset, spacer(), routeFilter);
-        controls.setAlignment(Pos.CENTER_LEFT);
+        VBox status = new VBox(4, visualRouteLabel, mapStatus);
+        status.setAlignment(Pos.CENTER_LEFT);
+        mapStatus.setStyle("-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #0f766e;");
 
-        GridPane metrics = metricGrid();
-        addMetric(metrics, 0, "Map status", mapStatus);
-        addMetric(metrics, 1, "Sample kept", mapSampleKept);
-        addMetric(metrics, 2, "Sample seen", mapSampleSeen);
-        addMetric(metrics, 3, "Sample step", mapSampleStep);
-        addMetric(metrics, 4, "Sample limit", mapSampleLimit);
-
-        mapView.setMinHeight(360);
-        VBox.setVgrow(mapView, Priority.ALWAYS);
-
-        VBox panel = new VBox(12, title, mapView, controls, metrics);
-        panel.setPadding(new Insets(16));
-        panel.setStyle(panelStyle());
-        return panel;
+        HBox filters = new HBox(10, routeFilter, status);
+        filters.setPadding(new Insets(12));
+        filters.setAlignment(Pos.CENTER_LEFT);
+        filters.setStyle(panelStyle());
+        return filters;
     }
 
     private Parent createWorkerPanel() {
@@ -234,15 +234,7 @@ public class MasterNodeView {
         return panel;
     }
 
-    private Parent createRightPanel() {
-        VBox right = new VBox(14);
-        right.setPrefWidth(330);
-        right.setPadding(new Insets(0, 0, 0, 16));
-        right.getChildren().addAll(createControlPanel(), createMetricsPanel(), createQueuePanel());
-        return right;
-    }
-
-    private Parent createControlPanel() {
+    private VBox createSummaryCard() {
         runPipelineButton.setMaxWidth(Double.MAX_VALUE);
         runPipelineButton.setStyle("-fx-background-color: #0f766e; -fx-text-fill: white; -fx-font-size: 15px;"
                 + "-fx-font-weight: bold; -fx-background-radius: 6; -fx-padding: 13 16;");
@@ -257,140 +249,44 @@ public class MasterNodeView {
         pipelineProgress.setMaxWidth(Double.MAX_VALUE);
         pipelineLog.setEditable(false);
         pipelineLog.setWrapText(true);
-        pipelineLog.setPrefRowCount(8);
+        pipelineLog.setPrefRowCount(5);
         pipelineLog.setStyle("-fx-font-size: 12px;");
 
-        Button detect = actionButton("Detect Workers");
-        detect.setOnAction(event -> {
-            if (detectWorkersHandler == null) {
-                detectWorkers();
-            } else {
-                detectWorkersHandler.run();
-            }
-        });
+        Label title = new Label("Procesamiento distribuido");
+        title.setStyle("-fx-font-size: 18px; -fx-font-weight: 700; -fx-text-fill: #18212f;");
+        Label subtitle = new Label("Master + workers ICE");
+        subtitle.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748b;");
 
-        Button start = actionButton("Start Distributed Processing");
-        start.setOnAction(event -> startProcessingSimulation());
+        VBox mainMetrics = new VBox(7);
+        mainMetrics.getChildren().addAll(
+                metricRow("Estado", stateLabel),
+                metricRow("Workers activos", activeWorkers),
+                metricRow("Workers configurados", workersDetected),
+                metricRow("Lineas leidas", recordsRead),
+                metricRow("Datagramas validos", validRecords),
+                metricRow("Datagramas invalidos", invalidRecords),
+                metricRow("Buckets generados", bucketsPrepared),
+                metricRow("Buckets enviados", bucketsCompleted),
+                metricRow("Buckets borrados", masterBucketsDeleted),
+                metricRow("Buckets retenidos", masterBucketsRetained),
+                metricRow("Espacio liberado", storageFreed),
+                metricRow("Workers fusionados", globalWorkersMerged),
+                metricRow("Rutas con resultado", globalRows),
+                metricRow("Intervalos validos", globalValidIntervals),
+                metricRow("Distancia global", globalDistance),
+                metricRow("Tiempo global", globalTime),
+                metricRow("Tiempo total", globalMergeElapsed),
+                metricRow("Puntos de mapa", mapSampleKept)
+        );
 
-        Button transfer = actionButton("Transfer Test Bucket");
-        transfer.setOnAction(event -> {
-            if (transferBucketHandler == null) {
-                showNoActiveWorkerForTransfer();
-            } else {
-                transferBucketHandler.run();
-            }
-        });
+        ScrollPane metricsScroll = new ScrollPane(mainMetrics);
+        metricsScroll.setFitToWidth(true);
+        metricsScroll.setMinHeight(190);
+        metricsScroll.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        VBox.setVgrow(metricsScroll, Priority.ALWAYS);
 
-        Button generateBuckets = actionButton("Generate Buckets");
-        generateBuckets.setOnAction(event -> {
-            if (generateBucketsHandler != null) {
-                generateBucketsHandler.run();
-            }
-        });
-
-        Button distributeBuckets = actionButton("Distribute Buckets");
-        distributeBuckets.setOnAction(event -> {
-            if (distributeBucketsHandler != null) {
-                distributeBucketsHandler.run();
-            }
-        });
-
-        Button processRemote = actionButton("Process Remote Buckets");
-        processRemote.setOnAction(event -> {
-            if (processRemoteBucketsHandler != null) {
-                processRemoteBucketsHandler.run();
-            }
-        });
-
-        Button mergeGlobal = actionButton("Merge Global Results");
-        mergeGlobal.setOnAction(event -> {
-            if (mergeGlobalResultsHandler != null) {
-                mergeGlobalResultsHandler.run();
-            }
-        });
-
-        Button pause = actionButton("Pause");
-        pause.setOnAction(event -> pauseSimulation());
-
-        Button reset = actionButton("Reset");
-        reset.setOnAction(event -> resetSimulation());
-
-        Button simulate = actionButton("Simulate Workers");
-        simulate.setOnAction(event -> simulateWorkers());
-
-        Button clear = actionButton("Clear Logs");
-        clear.setOnAction(event -> activityLog.clear());
-
-        VBox advancedBox = new VBox(10, detect, generateBuckets, distributeBuckets, processRemote,
-                mergeGlobal, transfer, start, pause, reset, simulate, clear);
-        TitledPane advanced = new TitledPane("Avanzado", advancedBox);
-        advanced.setExpanded(false);
-        advanced.setCollapsible(true);
-
-        VBox panel = new VBox(10, sectionTitle("Pipeline principal"), runPipelineButton, pipelineProgress,
-                pipelineStatus, pipelineStep, pipelineLog, advanced);
-        panel.setPadding(new Insets(16));
-        panel.setStyle(panelStyle());
-        return panel;
-    }
-
-    private Parent createMetricsPanel() {
-        GridPane grid = metricGrid();
-        addMetric(grid, 0, "Configured workers", workersDetected);
-        addMetric(grid, 1, "Active workers", activeWorkers);
-        addMetric(grid, 2, "Down workers", downWorkers);
-        addMetric(grid, 3, "Last scan", lastScanStatus);
-        addMetric(grid, 4, "Buckets prepared", bucketsPrepared);
-        addMetric(grid, 5, "Buckets assigned", bucketsAssigned);
-        addMetric(grid, 6, "Buckets in progress", bucketsInProgress);
-        addMetric(grid, 7, "Buckets completed", bucketsCompleted);
-        addMetric(grid, 8, "Failed buckets", failedBuckets);
-        addMetric(grid, 9, "Transfer target", transferTarget);
-        addMetric(grid, 10, "Transfer bucket", transferBucket);
-        addMetric(grid, 11, "Chunks sent", transferChunks);
-        addMetric(grid, 12, "Bytes sent", transferBytes);
-        addMetric(grid, 13, "Transfer result", transferResult);
-        addMetric(grid, 14, "Bucket job", bucketizationJob);
-        addMetric(grid, 15, "Lines read", recordsRead);
-        addMetric(grid, 16, "Valid records", validRecords);
-        addMetric(grid, 17, "Invalid lines", invalidRecords);
-        addMetric(grid, 18, "Output directory", bucketOutputDirectory);
-        addMetric(grid, 19, "Bucket elapsed", bucketElapsed);
-        addMetric(grid, 20, "Distribution job", distributionJob);
-        addMetric(grid, 21, "Workers used", distributionWorkers);
-        addMetric(grid, 22, "Current worker", currentDistributionWorker);
-        addMetric(grid, 23, "Current bucket", currentDistributionBucket);
-        addMetric(grid, 24, "Distribution result", distributionResult);
-        addMetric(grid, 25, "Remote job", remoteProcessingJob);
-        addMetric(grid, 26, "Remote workers", remoteWorkersRequested);
-        addMetric(grid, 27, "Remote success", remoteWorkersSucceeded);
-        addMetric(grid, 28, "Remote failed", remoteWorkersFailed);
-        addMetric(grid, 29, "Partial rows", remotePartialRows);
-        addMetric(grid, 30, "Remote elapsed", remoteProcessingElapsed);
-        addMetric(grid, 31, "Global job", globalMergeJob);
-        addMetric(grid, 32, "Workers merged", globalWorkersMerged);
-        addMetric(grid, 33, "Merge failed workers", globalWorkersFailed);
-        addMetric(grid, 34, "Global rows", globalRows);
-        addMetric(grid, 35, "Global valid intervals", globalValidIntervals);
-        addMetric(grid, 36, "Global distance", globalDistance);
-        addMetric(grid, 37, "Global time", globalTime);
-        addMetric(grid, 38, "Merge elapsed", globalMergeElapsed);
-
-        globalProgress.setMaxWidth(Double.MAX_VALUE);
-        VBox panel = new VBox(12, sectionTitle("Control Metrics"), grid, new Label("Global progress"), globalProgress);
-        panel.setPadding(new Insets(16));
-        panel.setStyle(panelStyle());
-        return panel;
-    }
-
-    private Parent createQueuePanel() {
-        GridPane grid = metricGrid();
-        addMetric(grid, 0, "Pending", pendingBuckets);
-        addMetric(grid, 1, "Assigned", bucketsAssigned);
-        addMetric(grid, 2, "Processing", bucketsInProgress);
-        addMetric(grid, 3, "Completed", bucketsCompleted);
-
-        VBox panel = new VBox(12, sectionTitle("Distribution Queue"), grid);
+        VBox panel = new VBox(10, title, subtitle, pipelineStatus, runPipelineButton, pipelineProgress,
+                pipelineStep, new Separator(), metricsScroll, new Separator(), pipelineLog);
         panel.setPadding(new Insets(16));
         panel.setStyle(panelStyle());
         return panel;
@@ -399,17 +295,30 @@ public class MasterNodeView {
     private Parent createResultsPanel() {
         TableView<ResultRow> table = new TableView<ResultRow>(results);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        table.setPrefHeight(170);
-        table.getColumns().add(resultColumn("Item", "route"));
-        table.getColumns().add(resultColumn("Job", "year"));
-        table.getColumns().add(resultColumn("Period/Bucket", "month"));
-        table.getColumns().add(resultColumn("Distance/Records", "averageSpeed"));
-        table.getColumns().add(resultColumn("Time/Bytes", "intervals"));
-        table.getColumns().add(resultColumn("Intervals/Source", "sourceWorkers"));
-        table.getColumns().add(resultColumn("Status", "status"));
+        table.setPrefHeight(220);
+        table.setPlaceholder(new Label("Sin resultados globales para mostrar"));
+        table.getColumns().add(resultColumn("Ruta", "route"));
+        table.getColumns().add(resultColumn("Anio", "year"));
+        table.getColumns().add(resultColumn("Mes", "month"));
+        table.getColumns().add(resultColumn("Velocidad promedio", "averageSpeed"));
+        table.getColumns().add(resultColumn("Intervalos validos", "intervals"));
+        table.getColumns().add(resultColumn("Estado", "status"));
 
-        VBox panel = new VBox(10, sectionTitle("Distributed Output Preview"), table);
-        panel.setPadding(new Insets(16, 0, 0, 0));
+        VBox panel = new VBox(10, sectionTitle("Promedios globales por ruta"), table);
+        panel.setPadding(new Insets(12));
+        panel.setStyle(panelStyle());
+        return panel;
+    }
+
+    private Parent createCompactLogPanel() {
+        activityLog.setEditable(false);
+        activityLog.setWrapText(true);
+        activityLog.setPrefRowCount(4);
+        activityLog.setStyle("-fx-font-size: 12px;");
+
+        VBox panel = new VBox(10, sectionTitle("Actividad reciente"), activityLog);
+        panel.setPadding(new Insets(12));
+        panel.setStyle(panelStyle());
         return panel;
     }
 
@@ -485,6 +394,11 @@ public class MasterNodeView {
     public void showPipelineWarning(String message) {
         appendPipelineLog("Advertencia: " + message);
         appendLog("Pipeline warning: " + message);
+    }
+
+    public void showStorageCleanup(String message) {
+        appendPipelineLog(message);
+        appendLog(message);
     }
 
     public void showPipelineFinished() {
@@ -640,6 +554,9 @@ public class MasterNodeView {
         pendingBuckets.setText(String.valueOf(config.getBucketCount()));
         bucketsCompleted.setText("0");
         failedBuckets.setText("0");
+        masterBucketsDeleted.setText("0");
+        masterBucketsRetained.setText("0");
+        storageFreed.setText("0 B");
         globalProgress.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
         appendLog("Generate Buckets requested.");
         appendLog("Bucketization job " + config.getJobId() + " started.");
@@ -717,6 +634,9 @@ public class MasterNodeView {
         bucketsInProgress.setText("0");
         bucketsCompleted.setText("0");
         failedBuckets.setText("0");
+        masterBucketsDeleted.setText("0");
+        masterBucketsRetained.setText("0");
+        storageFreed.setText("0 B");
         globalProgress.setProgress(items.isEmpty() ? 0 : 0.0);
         appendLog("Bucket distribution requested.");
         appendLog("Located " + items.size() + " generated bucket files.");
@@ -767,6 +687,9 @@ public class MasterNodeView {
         bucketsInProgress.setText("0");
         bucketsCompleted.setText(String.valueOf(result.getSentBuckets()));
         failedBuckets.setText(String.valueOf(result.getFailedBuckets()));
+        masterBucketsDeleted.setText(String.valueOf(result.getMasterBucketsDeleted()));
+        masterBucketsRetained.setText(String.valueOf(result.getMasterBucketsRetained()));
+        storageFreed.setText(humanBytes(result.getMasterBytesDeleted()));
         distributionResult.setText(result.isSuccess() ? "success" : "failed");
         globalProgress.setProgress(result.getTotalBuckets() == 0 ? 0 : (double) result.getSentBuckets() / result.getTotalBuckets());
         for (BucketDistributionItem item : result.getItems()) {
@@ -775,6 +698,10 @@ public class MasterNodeView {
         appendLog("Distribution completed: sent=" + result.getSentBuckets()
                 + " failed=" + result.getFailedBuckets()
                 + " elapsed=" + result.getElapsedMillis() + " ms.");
+        appendLog("Master storage cleanup: deletedBuckets=" + result.getMasterBucketsDeleted()
+                + ", retainedBuckets=" + result.getMasterBucketsRetained()
+                + ", deletedBytes=" + result.getMasterBytesDeleted()
+                + ", failedDeletes=" + result.getFailedDeletes() + ".");
         if (result.isSuccess()) {
             setState("Bucket distribution completed", "SENT", "#dcfce7", "#166534");
         } else {
@@ -816,28 +743,24 @@ public class MasterNodeView {
                 + ", buckets=" + result.getProcessedBuckets()
                 + ", rows=" + result.getResultCount()
                 + ", validIntervals=" + result.getValidIntervals() + ".");
+        appendLog("Worker response jobId=" + result.getJobId()
+                + ", workerId=" + result.getWorkerId()
+                + ", message=" + result.getMessage());
+        appendLog("Worker counters: " + countersSummary(result.getCounters()));
         if (!result.isSuccess()) {
             appendLog(result.getWorkerLogicalName() + " returned error: " + result.getMessage());
+            return;
         }
-        results.add(new ResultRow(
-                "worker " + result.getWorkerLogicalName(),
-                result.getJobId(),
-                result.getWorkerId(),
-                String.valueOf(result.getProcessedBuckets()),
-                String.valueOf(result.getValidIntervals()),
-                String.valueOf(result.getResultCount()),
-                result.isSuccess() ? "Partial OK" : "Partial Error"
-        ));
+        if (result.getRouteMonthResults().isEmpty()) {
+            appendLog(result.getWorkerLogicalName() + " processed buckets but produced no route-month partial rows.");
+        }
         for (RemoteRouteMonthPartial partial : result.getRouteMonthResults()) {
-            results.add(new ResultRow(
-                    partial.getWorkerId() + " " + partial.getRouteId(),
-                    result.getJobId(),
-                    partial.getYear() + "-" + String.format("%02d", partial.getMonth()),
-                    format(partial.getTotalDistanceMeters()) + " m",
-                    format(partial.getTotalTimeSeconds()) + " s",
-                    partial.getValidIntervals() + " intervals",
-                    "Partial avg " + format(partial.getAverageKmh()) + " km/h"
-            ));
+            appendLog("Partial row from " + result.getWorkerLogicalName()
+                    + ": route=" + partial.getRouteId()
+                    + ", year=" + partial.getYear()
+                    + ", month=" + partial.getMonth()
+                    + ", validIntervals=" + partial.getValidIntervals()
+                    + ", avgKmh=" + format(partial.getAverageKmh()) + ".");
         }
     }
 
@@ -854,7 +777,12 @@ public class MasterNodeView {
                 + ", failed=" + summary.getFailedWorkers()
                 + ", partialRows=" + summary.getTotalPartialResults()
                 + ", elapsed=" + summary.getElapsedMillis() + " ms.");
-        setState("Remote partial results received", "PARTIAL", "#dcfce7", "#166534");
+        if (summary.getSuccessfulWorkers() > 0 && summary.getTotalPartialResults() > 0) {
+            setState("Remote partial results received", "PARTIAL", "#dcfce7", "#166534");
+        } else {
+            appendLog("No se recibieron resultados parciales validos.");
+            setState("Remote processing without valid partial rows", "ERROR", "#fee2e2", "#991b1b");
+        }
     }
 
     public void showRemoteProcessingFailed(String message) {
@@ -894,13 +822,12 @@ public class MasterNodeView {
         for (GlobalMergedResultRow row : result.getRows()) {
             results.add(new ResultRow(
                     row.getRouteId(),
-                    result.getJobId(),
-                    row.getYearMonth(),
-                    format(row.getTotalDistanceMeters()) + " m",
-                    format(row.getTotalTimeSeconds()) + " s",
-                    row.getValidIntervals() + " intervals",
-                    "Global avg " + format(row.getAverageKmh()) + " km/h from "
-                            + row.getContributingWorkers() + " worker(s)"
+                    String.valueOf(row.getYear()),
+                    String.format("%02d", Integer.valueOf(row.getMonth())),
+                    format(row.getAverageKmh()) + " km/h",
+                    String.valueOf(row.getValidIntervals()),
+                    String.valueOf(row.getContributingWorkers()),
+                    result.isSuccess() ? "Con datos" : "Sin datos"
             ));
         }
         appendLog("Global merge completed: success=" + result.isSuccess()
@@ -991,6 +918,9 @@ public class MasterNodeView {
         bucketsCompleted.setText("0");
         failedBuckets.setText("0");
         pendingBuckets.setText("0");
+        masterBucketsDeleted.setText("0");
+        masterBucketsRetained.setText("0");
+        storageFreed.setText("0 B");
         transferTarget.setText("none");
         transferBucket.setText("none");
         transferChunks.setText("0 / 0");
@@ -1066,12 +996,44 @@ public class MasterNodeView {
         return String.format(java.util.Locale.US, "%.2f", value);
     }
 
+    private String humanBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double kib = bytes / 1024.0;
+        if (kib < 1024.0) {
+            return String.format(java.util.Locale.US, "%.1f KiB", Double.valueOf(kib));
+        }
+        double mib = kib / 1024.0;
+        if (mib < 1024.0) {
+            return String.format(java.util.Locale.US, "%.1f MiB", Double.valueOf(mib));
+        }
+        double gib = mib / 1024.0;
+        return String.format(java.util.Locale.US, "%.2f GiB", Double.valueOf(gib));
+    }
+
+    private String countersSummary(ProcessingCountersDto counters) {
+        if (counters == null) {
+            return "none";
+        }
+        return "lines=" + counters.totalLinesRead
+                + ", validIntervals=" + counters.validIntervals
+                + ", invalidLines=" + counters.invalidLines
+                + ", firstRecordsByBus=" + counters.firstRecordsByBus
+                + ", routeChanged=" + counters.routeChanged
+                + ", nonPositiveDeltaTime=" + counters.nonPositiveDeltaTime
+                + ", excessiveDeltaTime=" + counters.excessiveDeltaTime
+                + ", nonPositiveDistance=" + counters.nonPositiveDistance
+                + ", speedTooHigh=" + counters.speedTooHigh;
+    }
+
     private void updateMapSample(BucketizationResult result) {
         mapSampleKept.setText(String.valueOf(result.getVisualSampleTotalKept()));
         mapSampleSeen.setText(String.valueOf(result.getVisualSampleTotalSeen()));
         mapSampleStep.setText(String.valueOf(result.getVisualSampleStep()));
         mapSampleLimit.setText(String.valueOf(result.getVisualSampleMaxPoints()));
         updateRouteFilterOptions(result.getVisualSamplePoints());
+        appendMapSampleAudit(result.getVisualSamplePoints());
         if (result.isSuccess() && !result.getVisualSamplePoints().isEmpty()) {
             mapView.loadPoints(result.getVisualSamplePoints());
             mapStatus.setText("sample loaded");
@@ -1082,6 +1044,49 @@ public class MasterNodeView {
             mapStatus.setText("bucketization failed");
             mapView.resetPlayback();
         }
+    }
+
+    private void appendMapSampleAudit(List<master.map.MapPlaybackPoint> points) {
+        int total = points == null ? 0 : points.size();
+        Set<String> routes = new TreeSet<String>();
+        master.map.MapPlaybackPoint first = null;
+        if (points != null) {
+            for (master.map.MapPlaybackPoint point : points) {
+                if (first == null) {
+                    first = point;
+                }
+                String routeId = point.getRouteId();
+                if (routeId != null && !routeId.trim().isEmpty()) {
+                    routes.add(routeId.trim());
+                }
+            }
+        }
+        appendLog("Map sample total points=" + total + "; unique routes=" + routes.size()
+                + "; first routes=" + firstRoutes(routes) + ".");
+        if (first != null) {
+            appendLog("First map point: visualBusKey=" + first.getVisualBusKey()
+                    + ", processingBusId=" + first.getBusId()
+                    + ", routeId=" + first.getRouteId()
+                    + ", lat=" + first.getLatitude()
+                    + ", lon=" + first.getLongitude()
+                    + ", timestamp=" + first.getTimestamp() + ".");
+        }
+    }
+
+    private String firstRoutes(Set<String> routes) {
+        StringBuilder builder = new StringBuilder();
+        int count = 0;
+        for (String route : routes) {
+            if (count > 0) {
+                builder.append(", ");
+            }
+            builder.append(route);
+            count++;
+            if (count >= 10) {
+                break;
+            }
+        }
+        return builder.toString();
     }
 
     private void playMap() {
@@ -1263,6 +1268,18 @@ public class MasterNodeView {
         value.setStyle("-fx-font-weight: bold; -fx-text-fill: #0f172a;");
         grid.add(label, 0, row);
         grid.add(value, 1, row);
+    }
+
+    private Parent metricRow(String name, Label valueSource) {
+        HBox row = new HBox(8);
+        Label label = new Label(name);
+        label.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748b;");
+        Label metric = new Label();
+        metric.textProperty().bind(valueSource.textProperty());
+        metric.setStyle("-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #18212f;");
+        HBox.setHgrow(label, Priority.ALWAYS);
+        row.getChildren().addAll(label, metric);
+        return row;
     }
 
     private Label sectionTitle(String text) {

@@ -63,8 +63,9 @@ public final class BucketDistributionService {
 
             BucketTransferResult transfer = transfer(jobId, item, worker, progress);
             if (transfer.isSuccess()) {
+                cleanupMasterBucketAfterSuccess(item);
                 item.setStatus(BucketDistributionStatus.SENT);
-                item.setMessage("SENT to " + worker.getLogicalName());
+                item.setMessage("SENT to " + worker.getLogicalName() + storageSuffix(item));
                 notifyItem(progress, item);
             } else if (item.getAttempts() <= MAX_RETRIES && activeWorkers.size() > 1) {
                 item.setStatus(BucketDistributionStatus.PENDING);
@@ -72,8 +73,9 @@ public final class BucketDistributionService {
                 notifyItem(progress, item);
                 queue.add(item);
             } else {
+                cleanupFailedBucketIfConfigured(item);
                 item.setStatus(BucketDistributionStatus.FAILED);
-                item.setMessage(transfer.getMessage());
+                item.setMessage(transfer.getMessage() + storageSuffix(item));
                 notifyItem(progress, item);
             }
         }
@@ -145,6 +147,52 @@ public final class BucketDistributionService {
                 progress.onTransferProgress(item, worker, message, sentChunks, totalChunks, totalBytes);
             }
         });
+    }
+
+    private void cleanupMasterBucketAfterSuccess(BucketDistributionItem item) {
+        if (!deleteBucketAfterTransfer()) {
+            item.markMasterBucketRetained("Retained by sitm.master.delete.bucket.after.transfer=false");
+            return;
+        }
+        deleteBucketFile(item, "Deleted after successful transfer");
+    }
+
+    private void cleanupFailedBucketIfConfigured(BucketDistributionItem item) {
+        if (keepFailedBuckets()) {
+            item.markMasterBucketRetained("Retained failed bucket for diagnostics");
+            return;
+        }
+        deleteBucketFile(item, "Deleted failed bucket by sitm.master.keep.failed.buckets=false");
+    }
+
+    private void deleteBucketFile(BucketDistributionItem item, String successMessage) {
+        try {
+            long size = Files.exists(item.getPath()) ? Files.size(item.getPath()) : item.getSizeBytes();
+            if (Files.deleteIfExists(item.getPath())) {
+                item.markMasterBucketDeleted(size);
+                item.setMessage(item.getMessage() + ". " + successMessage + " (" + size + " bytes)");
+            } else {
+                item.markMasterBucketRetained("Bucket file already absent on Master");
+                item.setMessage(item.getMessage() + ". Bucket file already absent on Master");
+            }
+        } catch (IOException exception) {
+            item.markMasterBucketRetained("Delete failed: " + exception.getMessage());
+            item.setMessage(item.getMessage() + ". Warning: could not delete Master bucket: "
+                    + exception.getMessage());
+        }
+    }
+
+    private boolean deleteBucketAfterTransfer() {
+        return Boolean.parseBoolean(System.getProperty("sitm.master.delete.bucket.after.transfer", "true"));
+    }
+
+    private boolean keepFailedBuckets() {
+        return Boolean.parseBoolean(System.getProperty("sitm.master.keep.failed.buckets", "true"));
+    }
+
+    private String storageSuffix(BucketDistributionItem item) {
+        String message = item.getMasterDeleteMessage();
+        return message == null || message.trim().isEmpty() ? "" : ". " + message;
     }
 
     private void markAllFailed(List<BucketDistributionItem> items, String message) {

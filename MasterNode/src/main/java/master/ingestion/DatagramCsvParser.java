@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class DatagramCsvParser {
+    private static final int VISUAL_BUS_KEY_INDEX = 2;
     private static final int ODOMETER_INDEX = 3;
     private static final int LATITUDE_INDEX = 4;
     private static final int LONGITUDE_INDEX = 5;
@@ -29,6 +30,7 @@ public final class DatagramCsvParser {
         String longitude = clean(columns.get(LONGITUDE_INDEX));
         String routeId = clean(columns.get(ROUTE_ID_INDEX));
         String timestamp = clean(columns.get(TIMESTAMP_INDEX));
+        String visualBusKey = clean(columns.get(VISUAL_BUS_KEY_INDEX));
         String busId = clean(columns.get(BUS_ID_INDEX));
 
         if (busId.isEmpty()) {
@@ -47,7 +49,7 @@ public final class DatagramCsvParser {
             return DatagramParseResult.invalid(DatagramParseResult.Reason.MISSING_COORDINATES);
         }
 
-        return DatagramParseResult.valid(new CompactDatagramRecord(busId, routeId, odometer, timestamp, latitude, longitude));
+        return DatagramParseResult.valid(new CompactDatagramRecord(busId, visualBusKey, routeId, odometer, timestamp, latitude, longitude));
     }
 
     private boolean looksLikeHeader(List<String> columns) {
@@ -60,6 +62,7 @@ public final class DatagramCsvParser {
                 || "routeId".equalsIgnoreCase(clean(columns.get(ROUTE_ID_INDEX)))
                 || "lineId".equalsIgnoreCase(clean(columns.get(ROUTE_ID_INDEX)))
                 || "datagramDate".equalsIgnoreCase(clean(columns.get(TIMESTAMP_INDEX)))
+                || "busCode".equalsIgnoreCase(clean(columns.get(VISUAL_BUS_KEY_INDEX)))
                 || "busId".equalsIgnoreCase(clean(columns.get(BUS_ID_INDEX)));
     }
 

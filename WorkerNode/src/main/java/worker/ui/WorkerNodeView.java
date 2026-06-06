@@ -84,13 +84,10 @@ public class WorkerNodeView {
 
     public Parent createContent() {
         BorderPane root = new BorderPane();
-        root.setPadding(new Insets(18));
         root.setStyle("-fx-background-color: #eef3f8;");
 
         root.setTop(createHeader());
-        root.setCenter(createMainArea());
-        root.setRight(createControlPanel());
-        root.setBottom(createLogPanel());
+        root.setCenter(createDashboardBody());
 
         resetChunks();
         appendLog("Worker initialized.");
@@ -105,29 +102,30 @@ public class WorkerNodeView {
         scrollPane.setPannable(true);
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scrollPane.setStyle("-fx-background-color: #eef3f8;");
+        scrollPane.setStyle("-fx-background-color: #eef3f8; -fx-background: #eef3f8;");
         return scrollPane;
     }
 
     private Parent createHeader() {
         Label title = new Label("SITM-MIO Worker Node");
-        title.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #182235;");
+        title.setStyle("-fx-font-size: 24px; -fx-font-weight: 700; -fx-text-fill: #18212f;");
 
         Label subtitle = new Label("Worker ID: " + workerId + "   |   Puerto ICE: " + port);
-        subtitle.setStyle("-fx-font-size: 14px; -fx-text-fill: #64748b;");
+        subtitle.setStyle("-fx-font-size: 13px; -fx-text-fill: #64748b;");
 
         statusBadge.setStyle(badgeStyle("#e2e8f0", "#334155"));
-        VBox copy = new VBox(5, title, subtitle);
+        VBox copy = new VBox(4, title, subtitle);
         HBox header = new HBox(14, copy, spacer(), statusBadge);
         header.setAlignment(Pos.CENTER_LEFT);
-        header.setPadding(new Insets(0, 0, 16, 0));
+        header.setPadding(new Insets(18, 22, 12, 22));
         return header;
     }
 
-    private Parent createMainArea() {
-        VBox main = new VBox(14);
-        main.getChildren().addAll(createStatePanel(), createMetricsPanel(), createChunkPanel());
-        return main;
+    private Parent createDashboardBody() {
+        VBox body = new VBox(14);
+        body.setPadding(new Insets(0, 22, 22, 22));
+        body.getChildren().addAll(createStatePanel(), createMetricsPanel(), createChunkPanel(), createLogPanel());
+        return body;
     }
 
     private Parent createStatePanel() {
@@ -136,8 +134,8 @@ public class WorkerNodeView {
 
         StackPane stateBox = new StackPane(currentState);
         stateBox.setAlignment(Pos.CENTER_LEFT);
-        stateBox.setPadding(new Insets(18));
-        stateBox.setMinHeight(88);
+        stateBox.setPadding(new Insets(16));
+        stateBox.setMinHeight(78);
         stateBox.setStyle(panelStyle());
 
         return new VBox(10, stateBox, workerProgress);
@@ -148,30 +146,18 @@ public class WorkerNodeView {
         addMetric(grid, 0, "Worker ID", new Label(workerId));
         addMetric(grid, 1, "Port", new Label(String.valueOf(port)));
         addMetric(grid, 2, "Endpoint", endpoint);
-        addMetric(grid, 3, "Status", statusBadge);
-        addMetric(grid, 4, "Runtime directory", runtimeDirectory);
-        addMetric(grid, 5, "Received buckets directory", receivedBucketsDirectory);
-        addMetric(grid, 6, "Demo buckets directory", demoBucketsDirectory);
-        addMetric(grid, 7, "Current job", currentJob);
-        addMetric(grid, 8, "Current bucket", currentBucket);
-        addMetric(grid, 9, "Received chunks", receivedChunks);
-        addMetric(grid, 10, "Received bytes", receivedBytes);
-        addMetric(grid, 11, "Received buckets", receivedBuckets);
-        addMetric(grid, 12, "Local bucket path", localBucketPath);
-        addMetric(grid, 13, "Processed buckets", processedBuckets);
-        addMetric(grid, 14, "Active local tasks", activeTasks);
-        addMetric(grid, 15, "Valid intervals", validIntervals);
-        addMetric(grid, 16, "Discards", discards);
-        addMetric(grid, 17, "Route changed", routeChanged);
-        addMetric(grid, 18, "Invalid time", invalidTime);
-        addMetric(grid, 19, "Invalid distance", invalidDistance);
-        addMetric(grid, 20, "Speed too high", speedTooHigh);
-        addMetric(grid, 21, "Route-month keys", routeMonthKeys);
-        addMetric(grid, 22, "Partial averages generated", partialAverages);
-        addMetric(grid, 23, "Local processing time", localTime);
-        addMetric(grid, 24, "Errors", errors);
+        addMetric(grid, 3, "Runtime directory", runtimeDirectory);
+        addMetric(grid, 4, "Current job", currentJob);
+        addMetric(grid, 5, "Current bucket", currentBucket);
+        addMetric(grid, 6, "Chunks received", receivedChunks);
+        addMetric(grid, 7, "Buckets received", receivedBuckets);
+        addMetric(grid, 8, "Buckets processed", processedBuckets);
+        addMetric(grid, 9, "Valid intervals", validIntervals);
+        addMetric(grid, 10, "Partial averages", partialAverages);
+        addMetric(grid, 11, "Local time", localTime);
+        addMetric(grid, 12, "Errors", errors);
 
-        VBox panel = new VBox(12, sectionTitle("Local Worker Metrics"), grid);
+        VBox panel = new VBox(12, sectionTitle("Worker summary"), grid);
         panel.setPadding(new Insets(16));
         panel.setStyle(panelStyle());
         return panel;
@@ -180,7 +166,7 @@ public class WorkerNodeView {
     private Parent createChunkPanel() {
         ListView<String> chunks = new ListView<String>(chunkItems);
         chunks.setPrefHeight(150);
-        VBox panel = new VBox(10, sectionTitle("Chunk and Bucket Reception"), chunks);
+        VBox panel = new VBox(10, sectionTitle("Bucket activity"), chunks);
         panel.setPadding(new Insets(16));
         panel.setStyle(panelStyle());
         return panel;
@@ -332,6 +318,9 @@ public class WorkerNodeView {
         showProcessingStarted();
         currentJob.setText(jobId);
         appendLog("Remote processing requested for job " + jobId + ".");
+        appendLog("Worker processing jobId=" + jobId + ".");
+        appendLog("Worker received bucket dir=" + receivedBucketsDirectory.getText()
+                + java.io.File.separator + jobId + ".");
         setState("Remote processing requested", "REMOTE", "#dbeafe", "#1d4ed8");
     }
 
@@ -360,6 +349,7 @@ public class WorkerNodeView {
         chunkItems.add("Lines read: " + counters.getTotalLinesRead());
         chunkItems.add("Valid intervals: " + counters.getValidIntervals());
         chunkItems.add("Discarded intervals: " + counters.discardedIntervals());
+        appendLog(result.getMessage());
         int shown = 0;
         for (Map.Entry<RouteMonthKey, SpeedAccumulator> entry : result.getAccumulators().entrySet()) {
             SpeedAccumulator accumulator = entry.getValue();

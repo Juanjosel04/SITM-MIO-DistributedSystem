@@ -74,6 +74,10 @@ public final class PartialSpeedResult {
         return message;
     }
 
+    public void setMessage(String message) {
+        this.message = message == null || message.trim().isEmpty() ? this.message : message;
+    }
+
     public long getElapsedMillis() {
         return elapsedMillis;
     }

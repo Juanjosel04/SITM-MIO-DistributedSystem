@@ -42,12 +42,22 @@ public final class MasterIceClient implements AutoCloseable {
     }
 
     public PartialProcessingResult processReceivedBuckets(WorkerConnectionResult worker, String jobId) {
-        ObjectPrx base = communicator.stringToProxy(worker.getProxy()).ice_invocationTimeout(30000);
+        ObjectPrx base = communicator.stringToProxy(worker.getProxy()).ice_invocationTimeout(remoteProcessingTimeoutMs());
         WorkerServicePrx service = WorkerServicePrx.checkedCast(base);
         if (service == null) {
             throw new IllegalStateException("Worker proxy is not a WorkerService");
         }
         return service.processReceivedBuckets(jobId);
+    }
+
+    private int remoteProcessingTimeoutMs() {
+        String value = System.getProperty("sitm.master.remote.processing.timeout.ms", "600000");
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed <= 0 ? -1 : parsed;
+        } catch (RuntimeException exception) {
+            return 600000;
+        }
     }
 
     @Override

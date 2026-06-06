@@ -23,9 +23,11 @@ import master.transfer.TestBucketFileFactory;
 import master.ui.MasterNodeView;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -40,6 +42,7 @@ public class MasterNodeApplication extends Application {
     private DistributionResult lastDistributionResult;
     private RemoteProcessingSummary lastRemoteProcessingSummary;
     private List<RemoteWorkerPartialResult> lastPartialResults = Collections.emptyList();
+    private BucketizationResult activePipelineBucketizationResult;
 
     public static void main(String[] args) {
         launch(args);
@@ -86,12 +89,14 @@ public class MasterNodeApplication extends Application {
                 .runAsync(() -> runFullDistributedPipelineInBackground(view))
                 .thenRun(() -> Platform.runLater(view::showPipelineFinished))
                 .exceptionally(exception -> {
+                    cleanupFailedPipelineJobIfConfigured(view);
                     Platform.runLater(() -> view.showPipelineFailed(cleanMessage(exception)));
                     return null;
                 });
     }
 
     private void runFullDistributedPipelineInBackground(MasterNodeView view) {
+        activePipelineBucketizationResult = null;
         Platform.runLater(() -> view.showPipelineStep(1, "Detectando workers disponibles..."));
         List<WorkerConnectionResult> scannedWorkers = iceClient.scanWorkers();
         lastScanResults = scannedWorkers;
@@ -104,6 +109,7 @@ public class MasterNodeApplication extends Application {
 
         Platform.runLater(() -> view.showPipelineStep(2, "Generando buckets desde datagramas..."));
         BucketizationResult bucketizationResult = runBucketization(view);
+        activePipelineBucketizationResult = bucketizationResult;
         lastBucketizationResult = bucketizationResult;
         Platform.runLater(() -> view.showBucketizationFinished(bucketizationResult));
         if (!bucketizationResult.isSuccess() || bucketizationResult.getBuckets().isEmpty()) {
@@ -131,8 +137,11 @@ public class MasterNodeApplication extends Application {
         lastRemoteProcessingSummary = remoteSummary;
         lastPartialResults = remoteSummary.getWorkerResults();
         Platform.runLater(() -> view.showRemoteProcessingFinished(remoteSummary));
-        if (remoteSummary.getSuccessfulWorkers() == 0 || remoteSummary.getTotalPartialResults() == 0) {
-            throw new IllegalStateException("No se recibieron resultados parciales. Proceso detenido.");
+        if (remoteSummary.getSuccessfulWorkers() == 0) {
+            throw new IllegalStateException("No se recibio procesamiento remoto exitoso. Proceso detenido.");
+        }
+        if (remoteSummary.getTotalPartialResults() == 0) {
+            throw new IllegalStateException("No se recibieron resultados parciales validos. Proceso detenido.");
         }
         Platform.runLater(() -> view.showPipelineStepFinished(4,
                 remoteSummary.getSuccessfulWorkers() + " workers procesados; "
@@ -156,6 +165,8 @@ public class MasterNodeApplication extends Application {
         }
         Platform.runLater(() -> view.showPipelineStepFinished(6,
                 "Mapa listo con " + bucketizationResult.getVisualSampleTotalKept() + " puntos visuales cargados."));
+        cleanupMasterJobAfterSuccessfulPipeline(bucketizationResult, view);
+        activePipelineBucketizationResult = null;
     }
 
     private void showHealthResults(MasterNodeView view, List<WorkerConnectionResult> results) {
@@ -367,6 +378,85 @@ public class MasterNodeApplication extends Application {
         return message == null || message.trim().isEmpty()
                 ? "El pipeline distribuido fallo. Proceso detenido."
                 : message;
+    }
+
+    private void cleanupMasterJobAfterSuccessfulPipeline(BucketizationResult result, MasterNodeView view) {
+        if (result == null || !result.isSuccess()) {
+            return;
+        }
+        if (!cleanupJobAfterPipeline()) {
+            Platform.runLater(() -> view.showStorageCleanup(
+                    "Master bucketization job retained by sitm.master.cleanup.job.after.pipeline=false."));
+            return;
+        }
+        CleanupStats stats = deleteRecursively(result.getOutputDirectory());
+        Platform.runLater(() -> view.showStorageCleanup("Master bucketization job cleanup: deletedEntries="
+                + stats.deletedEntries + ", deletedBytes=" + stats.deletedBytes
+                + ", failedDeletes=" + stats.failedDeletes + "."));
+    }
+
+    private void cleanupFailedPipelineJobIfConfigured(MasterNodeView view) {
+        BucketizationResult result = activePipelineBucketizationResult;
+        if (result == null || keepFailedJob()) {
+            return;
+        }
+        CleanupStats stats = deleteRecursively(result.getOutputDirectory());
+        Platform.runLater(() -> view.showStorageCleanup("Failed Master bucketization job cleanup: deletedEntries="
+                + stats.deletedEntries + ", deletedBytes=" + stats.deletedBytes
+                + ", failedDeletes=" + stats.failedDeletes + "."));
+        activePipelineBucketizationResult = null;
+    }
+
+    private boolean cleanupJobAfterPipeline() {
+        return Boolean.parseBoolean(System.getProperty("sitm.master.cleanup.job.after.pipeline", "true"));
+    }
+
+    private boolean keepFailedJob() {
+        return Boolean.parseBoolean(System.getProperty("sitm.master.keep.failed.job", "true"));
+    }
+
+    private CleanupStats deleteRecursively(Path directory) {
+        CleanupStats stats = new CleanupStats();
+        if (directory == null || !Files.exists(directory)) {
+            return stats;
+        }
+        java.util.stream.Stream<Path> stream = null;
+        try {
+            stream = Files.walk(directory);
+            List<Path> paths = new ArrayList<Path>();
+            stream.forEach(paths::add);
+            paths.sort(new Comparator<Path>() {
+                @Override
+                public int compare(Path left, Path right) {
+                    return right.getNameCount() - left.getNameCount();
+                }
+            });
+            for (Path path : paths) {
+                try {
+                    if (Files.isRegularFile(path)) {
+                        stats.deletedBytes += Files.size(path);
+                    }
+                    if (Files.deleteIfExists(path)) {
+                        stats.deletedEntries++;
+                    }
+                } catch (IOException exception) {
+                    stats.failedDeletes++;
+                }
+            }
+        } catch (IOException exception) {
+            stats.failedDeletes++;
+        } finally {
+            if (stream != null) {
+                stream.close();
+            }
+        }
+        return stats;
+    }
+
+    private static final class CleanupStats {
+        private int deletedEntries;
+        private long deletedBytes;
+        private int failedDeletes;
     }
 
     private void closeIceClient() {
