@@ -3,15 +3,48 @@ plugins {
     id 'application'
 }
 
-def javafxVersion = '17.0.2'
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+def javafxVersion = '11.0.2'
 def currentOs = System.getProperty('os.name').toLowerCase()
 def javafxPlatform = currentOs.contains('win') ? 'win' : (currentOs.contains('mac') ? 'mac' : 'linux')
-def java17Home = file('C:/Program Files/BellSoft/LibericaJDK-17')
+def executableSuffix = currentOs.contains('win') ? '.exe' : ''
+def javaExecutable = { executableName ->
+    def configuredHome = System.getenv('JAVA_HOME')
+    if (configuredHome != null && !configuredHome.trim().isEmpty()) {
+        return new File(configuredHome.trim(), "bin/${executableName}${executableSuffix}").absolutePath
+    }
+    return executableName
+}
+def generatedSliceDir = file("$buildDir/generated/slice")
+def sliceCompiler = file('C:/Program Files/ZeroC/Ice-3.7.11/bin/slice2java.exe')
 
 dependencies {
     implementation "org.openjfx:javafx-base:${javafxVersion}:${javafxPlatform}"
     implementation "org.openjfx:javafx-graphics:${javafxVersion}:${javafxPlatform}"
     implementation "org.openjfx:javafx-controls:${javafxVersion}:${javafxPlatform}"
+    implementation "org.openjfx:javafx-fxml:${javafxVersion}:${javafxPlatform}"
+    implementation "org.openjfx:javafx-media:${javafxVersion}:${javafxPlatform}"
+    implementation "org.openjfx:javafx-web:${javafxVersion}:${javafxPlatform}"
+    implementation 'com.zeroc:ice:3.7.10'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir generatedSliceDir
+        }
+    }
+}
+
+task generateSlice(type: Exec) {
+    inputs.file "$rootDir/WorkerService.ice"
+    outputs.dir generatedSliceDir
+    doFirst {
+        generatedSliceDir.mkdirs()
+    }
+    commandLine sliceCompiler.absolutePath, '--output-dir', generatedSliceDir.absolutePath, "$rootDir/WorkerService.ice"
 }
 
 application {
@@ -19,18 +52,24 @@ application {
 }
 
 tasks.withType(JavaCompile) {
+    dependsOn generateSlice
     options.encoding = 'UTF-8'
     options.incremental = false
     options.fork = true
-    options.forkOptions.executable = new File(java17Home, 'bin/javac.exe').absolutePath
+    options.forkOptions.executable = javaExecutable('javac')
+    options.release = 11
 }
 
 run {
-    executable = new File(java17Home, 'bin/java.exe').absolutePath
+    executable = javaExecutable('java')
+    systemProperty 'sitm.worker.id', System.getProperty('sitm.worker.id', 'worker-local')
+    systemProperty 'sitm.worker.port', System.getProperty('sitm.worker.port', '10001')
+    systemProperty 'sitm.worker.storage.dir', System.getProperty('sitm.worker.storage.dir', '')
     doFirst {
+        def javafxPath = configurations.runtimeClasspath.files.findAll { it.name.startsWith('javafx-') }.join(File.pathSeparator)
         jvmArgs = [
-                '--module-path', configurations.runtimeClasspath.asPath,
-                '--add-modules', 'javafx.controls'
+                '--module-path', javafxPath,
+                '--add-modules', 'javafx.controls,javafx.fxml,javafx.media,javafx.web'
         ]
     }
 }
